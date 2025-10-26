@@ -1,50 +1,140 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Angle Debug</title>
   <style>
-    :root { --bg:#0b0c10; --card:#111318; --fg:#e5e7eb; --muted:#9ca3af; --accent:#60a5fa; --good:#22c55e; --warn:#f59e0b; }
-    *{box-sizing:border-box} html,body{height:100%}
-    body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:grid;place-items:center}
-    .wrap{width:100%;max-width:440px;padding:16px}
-    .card{background:var(--card);border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.35);padding:16px;display:grid;gap:12px}
-    .row{display:flex;gap:10px;align-items:center}
-    .big{font-size:48px;font-weight:800;letter-spacing:.02em}
-    .sub{font-size:24px;font-weight:700}
-    input[type="number"]{
-      width:120px;padding:10px 12px;border-radius:12px;border:1px solid #1f2430;background:#0f1116;color:var(--fg);
-      outline:none;font-weight:700;text-align:right
+    :root {
+      --bg: #0b0c10;
+      --card: #111318;
+      --fg: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #60a5fa;
+      --good: #22c55e;
+      --warn: #f59e0b;
     }
-    input[type="number"]:focus{border-color:#334155;box-shadow:0 0 0 4px rgba(96,165,250,.2)}
-    button{
-      padding:10px 14px;border-radius:12px;border:0;background:var(--accent);color:#0b1220;font-weight:800;cursor:pointer
+
+    * {
+      box-sizing: border-box;
     }
-    button:active{transform:scale(0.98)}
-    .ok{color:var(--good)} .bad{color:var(--warn)}
-    .viz{display:grid;place-items:center;height:220px;background:#0f1116;border-radius:12px;border:1px solid #1f2430}
-    svg{width:240px;height:200px}
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 16px/1.2 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      display: grid;
+      place-items: center;
+    }
+
+    .wrap {
+      width: 100%;
+      max-width: 440px;
+      padding: 16px;
+    }
+
+    .card {
+      background: var(--card);
+if (result !== null) angleActual = Math.abs(90 - Math.abs(((((result % 360) + 360) % 360) % 180) - 90));
+      border-radius: 16px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, .35);
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .big {
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+
+    .sub {
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    input[type="number"] {
+      width: 120px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid #1f2430;
+      background: #0f1116;
+      color: var(--fg);
+      outline: none;
+      font-weight: 700;
+      text-align: right;
+    }
+
+    input[type="number"]:focus {
+      border-color: #334155;
+      box-shadow: 0 0 0 4px rgba(96, 165, 250, .2);
+    }
+
+    button {
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 0;
+      background: var(--accent);
+      color: #0b1220;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    .ok {
+      color: var(--good);
+    }
+
+    .bad {
+      color: var(--warn);
+    }
+
+    .viz {
+      display: grid;
+      place-items: center;
+      height: 220px;
+      background: #0f1116;
+      border-radius: 12px;
+      border: 1px solid #1f2430;
+    }
+
+    svg {
+      width: 240px;
+      height: 200px;
+    }
   </style>
 </head>
+
 <body>
   <div class="wrap">
     <div class="card">
-      <!-- live values -->
-      <div class="row" style="justify-content:space-between">
+      <div class="row" style="justify-content: space-between;">
         <div class="big"><span id="angle">--.--</span>°</div>
         <div class="sub" id="dev">--.--°</div>
       </div>
 
-      <!-- controls -->
-      <div class="row" style="justify-content:space-between">
+      <div class="row" style="justify-content: space-between;">
         <div class="row">
           <input id="target" type="number" step="0.1" value="30"><span>°</span>
         </div>
         <button id="cal">Calibrate</button>
       </div>
 
-      <!-- graphic -->
       <div class="viz">
         <svg viewBox="0 0 240 200" aria-label="Deviation">
           <line x1="120" y1="20" x2="120" y2="180" stroke="#1f2430" stroke-width="2"/>
@@ -57,104 +147,148 @@
   </div>
 
 <script>
-/* Elements */
-const angleEl = document.getElementById("angle");
-const devEl   = document.getElementById("dev");
-const devText = document.getElementById("devtext");
-const dot     = document.getElementById("dot");
-const targetIn= document.getElementById("target");
-const btnCal  = document.getElementById("cal");
+  /* ELEMENTS */
+  const angleEl = document.getElementById("angle");
+  const devEl = document.getElementById("dev");
+  const devText = document.getElementById("devtext");
+  const dot = document.getElementById("dot");
+  const targetIn = document.getElementById("target");
+  const btnCal = document.getElementById("cal");
 
-/* State */
-let target = Math.abs(parseFloat(targetIn.value)) || 30;
-let angleActual = NaN;     // latest raw value from /angle
-let angleDisplay = 0;      // smoothed for UI
-let devDisplay = 0;
-let inflight = false;      // prevent overlapping HTTP requests
+  /* STATE */
+  let target = Math.abs(parseFloat(targetIn.value)) || 30;
+  let angleActual = NaN;
+  let angleDisplay = 0;
+  let devDisplay = 0;
+  let inflight = false;
 
-/* Tuning */
-const FETCH_INTERVAL_MS   = 100;     // ~16–17 Hz polling (stable on ESP32)
-const REQUEST_TIMEOUT_MS  = 800;    // allow enough time for reply
-const PX_PER_DEG          = 90/12;  // 7.5 px per degree; ±12° => ±90 px
-const CLAMP_PX            = 95;
-const CENTER_Y            = 100;
+  /* CONSTANTS */
+  const FETCH_INTERVAL_MS = 100;
+  const REQUEST_TIMEOUT_MS = 800;
+  const PX_PER_DEG = 90 / 12;
+  const CLAMP_PX = 95;
+  const CENTER_Y = 100;
 
-/* Helpers */
-const fmt   = x => (isFinite(x) ? x.toFixed(2) : "--.--");
-const clamp = (x,a,b) => Math.max(a, Math.min(b, x));
-function nearestDeviation(angleDeg, targetDeg){
-  const T = Math.abs(targetDeg);
-  const d1 = angleDeg - T;
-  const d2 = angleDeg + T;
-  return (Math.abs(d1) <= Math.abs(d2)) ? d1 : d2; // signed
-}
+  /* HELPERS */
+  const fmt = x => (isFinite(x) ? x.toFixed(2) : "--.--");
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const simpleDeviation = (a, t) => Math.abs(a) - t;
 
-/* Robust poller: single in-flight request with timeout */
-async function pollNow(){
-  if (inflight) return;
-  inflight = true;
+  function safeAbort(controller) {
+    try { controller.abort(); } catch (_) {}
+  }
 
-  const ctrl = new AbortController();
-  const t = setTimeout(function(){ try{ ctrl.abort(); }catch(_){} }, REQUEST_TIMEOUT_MS);
+  async function safeFetch(url, options = {}) {
+    try {
+      const res = await fetch(url, { ...options, cache: "no-store" });
+      if (res && res.ok) {
+        const txt = (await res.text()).trim();
+        const val = parseFloat(txt);
+        if (isFinite(val)) return val;
+      }
+    } catch (_) {}
+    return null;
+  }
 
-  try{
-    const r = await fetch("/angle", { cache: "no-store", signal: ctrl.signal });
-    if (r && r.ok){
-      const txt = (await r.text()).trim();
-      const a = parseFloat(txt);
-      if (isFinite(a)) angleActual = a;
-    }
-  }catch(e){
-    // ignore timeouts or brief glitches
-  }finally{
-    clearTimeout(t);
+  async function safePost(url) {
+    try { await fetch(url, { method: "POST" }); } catch (_) {}
+  }
+
+  /* POLLING */
+  async function pollNow() {
+    if (inflight) return;
+    inflight = true;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => safeAbort(controller), REQUEST_TIMEOUT_MS);
+
+    const result = await safeFetch("/angle", { signal: controller.signal });
+    if (result !== null) angleActual = Math.abs(90 - Math.abs(((((result % 360) + 360) % 360) % 180) - 90));
+
+    clearTimeout(timeout);
     inflight = false;
   }
-}
-setInterval(pollNow, FETCH_INTERVAL_MS);
-pollNow();
 
-/* Animation loop with time-based exponential smoothing */
-let last = performance.now();
-function animate(){
-  const now = performance.now();
-  const dt = (now - last) / 1000;
-  last = now;
+  setInterval(pollNow, FETCH_INTERVAL_MS);
+  pollNow();
 
-  const k = 5; // responsiveness
-  const alpha = 1 - Math.exp(-k * dt);
+  /* AUDIO */
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let lastBeepTime = 0;
+  function resumeAudio() {
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    document.removeEventListener("click", resumeAudio);
+    document.removeEventListener("touchstart", resumeAudio);
+  }
+  document.addEventListener("click", resumeAudio);
+  document.addEventListener("touchstart", resumeAudio);
 
-  if (isFinite(angleActual)){
-    angleDisplay += (angleActual - angleDisplay) * alpha;
+  function playBeep(freq, dur = 100) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
 
-    const devActual = nearestDeviation(angleDisplay, target);
-    devDisplay += (devActual - devDisplay) * alpha;
+    const now = audioCtx.currentTime;
+    const fade = 0.01;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.1, now + fade);
+    gain.gain.setValueAtTime(0.1, now + dur / 1000 - fade);
+    gain.gain.linearRampToValueAtTime(0, now + dur / 1000);
 
-    angleEl.textContent = fmt(angleDisplay);
-    devEl.textContent   = (devDisplay >= 0 ? "+" : "") + fmt(devDisplay) + "°";
-    devEl.className     = "sub " + (Math.abs(devDisplay) < 3 ? "ok" : "bad");
-    devText.textContent = fmt(devDisplay) + "°";
-
-    const dy = clamp(devDisplay * PX_PER_DEG, -CLAMP_PX, CLAMP_PX);
-    dot.setAttribute("cy", String(CENTER_Y - dy)); // positive deviation up
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + dur / 1000);
   }
 
-  requestAnimationFrame(animate);
-}
-animate();
+  /* ANIMATION */
+  let last = performance.now();
+  function animate() {
+    const now = performance.now();
+    const dt = (now - last) / 1000;
+    last = now;
 
-/* UI hooks */
-targetIn.addEventListener("change", function(){
-  const v = parseFloat(targetIn.value);
-  target = (isFinite(v) && v > 0) ? Math.abs(v) : 30;
-  targetIn.value = target;
-});
+    const k = 5;
+    const alpha = 1 - Math.exp(-k * dt);
 
-btnCal.addEventListener("click", async function(){
-  btnCal.disabled = true;
-  try{ await fetch("/recalibrate", { method: "POST" }); }catch(e){}
-  setTimeout(function(){ btnCal.disabled = false; }, 300);
-});
-</script>
-</body>
-</html>
+    if (isFinite(angleActual)) {
+      angleDisplay += (angleActual - angleDisplay) * alpha;
+
+      const devActual = simpleDeviation(angleDisplay, target);
+      devDisplay += (devActual - devDisplay) * alpha;
+
+      const absDev = Math.abs(devDisplay);
+      angleEl.textContent = fmt(angleDisplay);
+      devEl.textContent = fmt(absDev) + "°";
+      devEl.className = "sub " + (absDev < 3 ? "ok" : "bad");
+      devText.textContent = fmt(absDev) + "°";
+
+      const dy = clamp(devDisplay * PX_PER_DEG, -CLAMP_PX, CLAMP_PX);
+      dot.setAttribute("cy", String(CENTER_Y - dy));
+
+      if (absDev >= 0.5 && absDev <= 15) {
+        const freq = devDisplay > 0 ? 1000 : 500;
+        const interval = Math.max(100, 2000 / (1 + absDev * 2));
+        if (now - lastBeepTime > interval) {
+          playBeep(freq, 100);
+          lastBeepTime = now;
+        }
+      }
+    }
+    requestAnimationFrame(animate);
+  }
+  animate();
+
+  /* UI */
+  targetIn.addEventListener("change", () => {
+    const v = parseFloat(targetIn.value);
+    target = isFinite(v) && v > 0 ? Math.abs(v) : 30;
+    targetIn.value = target;
+  });
+
+  btnCal.addEventListener("click", async () => {
+    btnCal.disabled = true;
+    await safePost("/recalibrate");
+    setTimeout(() => { btnCal.disabled = false; }, 300);
+  });
+</script></body></html>
