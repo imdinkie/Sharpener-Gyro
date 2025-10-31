@@ -68,6 +68,34 @@
       color: var(--muted);
     }
 
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .field-label {
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .field-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .field input {
+      width: 110px;
+    }
+
+    .thresholds {
+      justify-content: space-between;
+    }
+
     input[type="number"] {
       width: 120px;
       padding: 10px 12px;
@@ -111,6 +139,10 @@
       color: var(--warn);
     }
 
+    .sub.critical {
+      color: #f87171;
+    }
+
     .viz {
       display: grid;
       place-items: center;
@@ -148,6 +180,23 @@
         </div>
       </div>
 
+      <div class="row thresholds">
+        <label class="field">
+          <span class="field-label">Deadband</span>
+          <div class="field-row">
+            <input id="deadband" type="number" step="0.1" min="0" max="30" value="0.5">
+            <span>°</span>
+          </div>
+        </label>
+        <label class="field">
+          <span class="field-label">Critical</span>
+          <div class="field-row">
+            <input id="critical" type="number" step="0.1" min="0" max="60" value="4">
+            <span>°</span>
+          </div>
+        </label>
+      </div>
+
       <div class="viz">
         <svg viewBox="0 0 240 200" aria-label="Deviation">
           <line x1="120" y1="20" x2="120" y2="180" stroke="#1f2430" stroke-width="2"/>
@@ -169,9 +218,25 @@
   const btnCal = document.getElementById("cal");
   const btnOffset = document.getElementById("offset");
   const offsetText = document.getElementById("offsetText");
+  const deadbandIn = document.getElementById("deadband");
+  const criticalIn = document.getElementById("critical");
 
   /* STATE */
-  let target = Math.abs(parseFloat(targetIn.value)) || 30;
+  const STORAGE_KEYS = {
+    target: "sharpener.target",
+    deadband: "sharpener.deadband",
+    critical: "sharpener.critical",
+  };
+  const DEFAULTS = {
+    target: 30,
+    deadband: 0.5,
+    critical: 4,
+  };
+  const MIN_CRITICAL_MARGIN = 0.1;
+
+  let target = DEFAULTS.target;
+  let deadband = DEFAULTS.deadband;
+  let critical = DEFAULTS.critical;
   let angleActual = NaN;
   let angleDisplay = 0;
   let devDisplay = 0;
@@ -196,6 +261,51 @@
 
   function safeAbort(controller) {
     try { controller.abort(); } catch (_) {}
+  }
+
+  function loadSetting(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw === null) return fallback;
+      const val = parseFloat(raw);
+      return isFinite(val) ? val : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function persistSetting(key, value) {
+    try { localStorage.setItem(key, String(value)); } catch (_) {}
+  }
+
+  function sanitizeTarget(v) {
+    const val = isFinite(v) && v > 0 ? Math.min(Math.abs(v), 90) : DEFAULTS.target;
+    return val;
+  }
+
+  function sanitizeDeadband(v) {
+    const val = isFinite(v) && v >= 0 ? Math.min(Math.abs(v), 30) : DEFAULTS.deadband;
+    return val;
+  }
+
+  function sanitizeCritical(v, currentDeadband) {
+    const base = isFinite(v) && v > 0 ? Math.min(Math.abs(v), 60) : DEFAULTS.critical;
+    const minAllowed = (isFinite(currentDeadband) ? currentDeadband : DEFAULTS.deadband) + MIN_CRITICAL_MARGIN;
+    return Math.max(minAllowed, base);
+  }
+
+  function initSettings() {
+    target = sanitizeTarget(loadSetting(STORAGE_KEYS.target, DEFAULTS.target));
+    deadband = sanitizeDeadband(loadSetting(STORAGE_KEYS.deadband, DEFAULTS.deadband));
+    critical = sanitizeCritical(loadSetting(STORAGE_KEYS.critical, DEFAULTS.critical), deadband);
+
+    targetIn.value = target;
+    deadbandIn.value = deadband;
+    criticalIn.value = critical;
+
+    persistSetting(STORAGE_KEYS.target, target);
+    persistSetting(STORAGE_KEYS.deadband, deadband);
+    persistSetting(STORAGE_KEYS.critical, critical);
   }
 
   async function safeFetch(url, options = {}) {
@@ -241,6 +351,8 @@
 
   setInterval(pollNow, FETCH_INTERVAL_MS);
   pollNow();
+
+  initSettings();
 
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   let lastBeepTime = 0;
@@ -294,7 +406,14 @@
       const absDev = Math.abs(devDisplay);
       angleEl.textContent = fmt(angleDisplay);
       devEl.textContent = fmt(absDev) + "°";
-      devEl.className = "sub " + (absDev < 3 ? "ok" : "bad");
+      const withinDeadband = absDev <= deadband;
+      const isCritical = absDev >= critical;
+      devEl.className = "sub " + (withinDeadband ? "ok" : "bad");
+      if (isCritical) {
+        devEl.classList.add("critical");
+      } else {
+        devEl.classList.remove("critical");
+      }
       devText.textContent = fmt(absDev) + "°";
 
       offsetText.textContent = "Offset: " + fmt(offsetDeg*2) + "°";
@@ -302,7 +421,9 @@
       const dy = clamp(devDisplay * PX_PER_DEG, -CLAMP_PX, CLAMP_PX);
       dot.setAttribute("cy", String(CENTER_Y - dy));
 
-      if (absDev >= 0.5 && absDev <= 15) {
+      const beepLower = Math.max(deadband, 0.1);
+      const beepUpper = Math.max(critical + 5, 15);
+      if (absDev >= beepLower && absDev <= beepUpper) {
         const freq = devDisplay > 0 ? 1000 : 500;
         const interval = Math.max(100, 2000 / (1 + absDev * 2));
         if (now - lastBeepTime > interval) {
@@ -317,8 +438,28 @@
 
   targetIn.addEventListener("change", () => {
     const v = parseFloat(targetIn.value);
-    target = isFinite(v) && v > 0 ? Math.abs(v) : 30;
+    target = sanitizeTarget(v);
     targetIn.value = target;
+    persistSetting(STORAGE_KEYS.target, target);
+  });
+
+  deadbandIn.addEventListener("change", () => {
+    const v = parseFloat(deadbandIn.value);
+    deadband = sanitizeDeadband(v);
+    deadbandIn.value = deadband;
+    persistSetting(STORAGE_KEYS.deadband, deadband);
+    if (critical <= deadband) {
+      critical = sanitizeCritical(critical, deadband);
+      criticalIn.value = critical;
+      persistSetting(STORAGE_KEYS.critical, critical);
+    }
+  });
+
+  criticalIn.addEventListener("change", () => {
+    const v = parseFloat(criticalIn.value);
+    critical = sanitizeCritical(v, deadband);
+    criticalIn.value = critical;
+    persistSetting(STORAGE_KEYS.critical, critical);
   });
 
   btnOffset.addEventListener("click", () => {
