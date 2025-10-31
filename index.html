@@ -263,6 +263,11 @@
   let angleDisplay = 0;
   let devDisplay = 0;
   let inflight = false;
+  let eventSource = null;
+  let pollTimer = null;
+  let lastSseMsgAt = 0;
+  let lastSseIntervalMs = null;
+  let transportMode = "poll";
 
   // New state for side/offset
   let reversed = false;               
@@ -276,6 +281,7 @@
   const CLAMP_PX = 95;
   const CENTER_Y = 100;
   const LATENCY_LOG_INTERVAL_MS = 3000;
+  const SSE_RETRY_DELAY_MS = 5000;
 
   let lastFetchAgeMs = null;
   let lastFetchRttMs = null;
@@ -304,7 +310,41 @@
     ageMs: lastFetchAgeMs,
     networkRttMs: lastFetchRttMs,
     lastFetchTimestamp: lastFetchCompletedAt,
+    transport: transportMode,
+    sseIntervalMs: lastSseIntervalMs,
   });
+
+  function recordLatency({ ageMs = null, rttMs = null, source = "poll", intervalMs = null }) {
+    const now = performance.now();
+    lastFetchAgeMs = isFinite(ageMs) ? ageMs : null;
+    lastFetchRttMs = (rttMs !== null && isFinite(rttMs)) ? rttMs : null;
+    lastFetchCompletedAt = now;
+    transportMode = source;
+    if (source === "sse") {
+      lastSseIntervalMs = intervalMs;
+    }
+
+    if (!debugLatency) return;
+    if ((now - lastLatencyLogMs) < LATENCY_LOG_INTERVAL_MS) return;
+
+    const ageTxt = lastFetchAgeMs === null ? "n/a" : `${lastFetchAgeMs.toFixed(1)}`;
+    if (source === "sse") {
+      const intervalTxt = intervalMs === null ? "n/a" : `${intervalMs.toFixed(1)}`;
+      console.log(`[latency] sse age=${ageTxt}ms interval=${intervalTxt}ms`);
+    } else {
+      const rttTxt = lastFetchRttMs === null ? "n/a" : `${lastFetchRttMs.toFixed(1)}`;
+      const approx = (lastFetchAgeMs ?? 0) + (lastFetchRttMs ?? 0) / 2;
+      console.log(`[latency] poll age=${ageTxt}ms rtt=${rttTxt}ms est_total=${approx.toFixed(1)}ms`);
+    }
+    lastLatencyLogMs = now;
+  }
+
+  function applyDelta(delta) {
+    if (!isFinite(delta)) return;
+    const raw = (((delta % 360) + 360) % 360);
+    reversed = (raw >= 90 && raw <= 270);
+    angleActual = Math.abs(90 - Math.abs(((raw % 180) - 90)));
+  }
 
   function loadSetting(key, fallback) {
     try {
@@ -409,33 +449,87 @@
     inflight = false;
 
     if (result) {
-      lastFetchAgeMs = (typeof result.age_ms === "number") ? result.age_ms : null;
-      lastFetchRttMs = reqEnd - reqStart;
-      lastFetchCompletedAt = reqEnd;
-
-      if (debugLatency && (reqEnd - lastLatencyLogMs) >= LATENCY_LOG_INTERVAL_MS) {
-        const age = lastFetchAgeMs ?? 0;
-        const rtt = lastFetchRttMs ?? 0;
-        const approx = age + rtt / 2;
-        const ageTxt = lastFetchAgeMs === null ? "n/a" : `${age.toFixed(1)}`;
-        const rttTxt = `${rtt.toFixed(1)}`;
-        console.log(`[latency] age=${ageTxt}ms rtt=${rttTxt}ms est_total=${approx.toFixed(1)}ms`);
-        lastLatencyLogMs = reqEnd;
-      }
-
       if (typeof result.delta === "number") {
-        const delta = result.delta;
-        const raw = (((delta % 360) + 360) % 360);
-        reversed = (raw >= 90 && raw <= 270);
-        angleActual = Math.abs(90 - Math.abs(((raw % 180) - 90)));
+        applyDelta(result.delta);
       }
+      const age = (typeof result.age_ms === "number") ? result.age_ms : null;
+      recordLatency({ ageMs: age, rttMs: reqEnd - reqStart, source: "poll" });
     }
   }
 
-  setInterval(pollNow, FETCH_INTERVAL_MS);
-  pollNow();
+  function startPolling() {
+    if (pollTimer !== null) return;
+    pollTimer = setInterval(() => {
+      if (!eventSource) {
+        pollNow();
+      }
+    }, FETCH_INTERVAL_MS);
+    if (!eventSource) {
+      pollNow();
+    }
+  }
+
+  function stopPolling() {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function stopEventStream() {
+    if (eventSource) {
+      try { eventSource.close(); } catch (_) {}
+      eventSource = null;
+    }
+    lastSseMsgAt = 0;
+    lastSseIntervalMs = null;
+  }
+
+  function startEventStream() {
+    if (!("EventSource" in window)) {
+      console.warn("[sse] EventSource not available; using polling");
+      if (pollTimer === null) startPolling();
+      return;
+    }
+    if (eventSource) return;
+    try {
+      const es = new EventSource("/events");
+      eventSource = es;
+      es.onopen = () => {
+        stopPolling();
+      };
+      es.onmessage = (event) => {
+        let payload = null;
+        try {
+          payload = JSON.parse(event.data);
+        } catch (_) {}
+        if (payload && typeof payload.delta === "number") {
+          applyDelta(payload.delta);
+        }
+        const age = payload && typeof payload.age_ms === "number" ? payload.age_ms : null;
+        const now = performance.now();
+        const interval = lastSseMsgAt ? now - lastSseMsgAt : null;
+        lastSseMsgAt = now;
+        recordLatency({ ageMs: age, rttMs: null, source: "sse", intervalMs: interval });
+      };
+      es.onerror = () => {
+        console.warn("[sse] connection error; falling back to polling");
+        stopEventStream();
+        startPolling();
+        setTimeout(() => {
+          if (!eventSource) startEventStream();
+        }, SSE_RETRY_DELAY_MS);
+      };
+    } catch (err) {
+      console.warn("[sse] failed to start:", err);
+      stopEventStream();
+      startPolling();
+    }
+  }
 
   initSettings();
+  startPolling();
+  startEventStream();
 
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   let lastChirpMs = 0;

@@ -45,6 +45,111 @@ ap.config(essid=SSID, password=PASSWORD, authmode=network.AUTH_WPA_WPA2_PSK)
 ap.ifconfig((AP_IP, NETMASK, GATEWAY, DNS_IP))
 print("AP started:", ap.ifconfig())
 
+# ---------- Measurement + SSE state ----------
+event_clients = set()
+event_lock = asyncio.Lock()
+latest_delta = None
+latest_age_ms = None
+latest_json = ujson.dumps({"delta": None, "age_ms": None})
+latest_sse_data = "data: {}\n\n".format(latest_json)
+
+
+def _round_delta(delta):
+    if delta is None:
+        return None
+    try:
+        return round(delta, 4)
+    except Exception:
+        return delta
+
+
+def update_latest(delta, age_ms):
+    global latest_delta, latest_age_ms, latest_json, latest_sse_data
+    latest_delta = delta
+    latest_age_ms = None if age_ms is None else int(age_ms)
+    payload = {
+        "delta": None if delta is None else _round_delta(delta),
+        "age_ms": latest_age_ms,
+    }
+    latest_json = ujson.dumps(payload)
+    latest_sse_data = "data: {}\n\n".format(latest_json)
+    return payload
+
+
+# initialize snapshot
+update_latest(tracker.get_last_delta(), tracker.get_last_age_ms())
+
+
+async def broadcast_latest():
+    if not event_clients:
+        return
+    data = latest_sse_data
+    async with event_lock:
+        targets = list(event_clients)
+    if not targets:
+        return
+    dead = []
+    for w in targets:
+        try:
+            await w.awrite(data)
+        except Exception:
+            dead.append(w)
+    if dead:
+        async with event_lock:
+            for w in dead:
+                if w in event_clients:
+                    event_clients.remove(w)
+                try:
+                    await w.aclose()
+                except Exception:
+                    pass
+
+
+async def register_sse_client(writer):
+    async with event_lock:
+        event_clients.add(writer)
+
+
+async def unregister_sse_client(writer):
+    async with event_lock:
+        if writer in event_clients:
+            event_clients.remove(writer)
+    try:
+        await writer.aclose()
+    except Exception:
+        pass
+
+
+async def serve_sse(writer):
+    hdr = (
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/event-stream\r\n"
+        "Cache-Control: no-store\r\n"
+        "Connection: keep-alive\r\n\r\n"
+    )
+    try:
+        await writer.awrite(hdr)
+        await writer.awrite(": ok\n\n")
+    except Exception:
+        return
+
+    await register_sse_client(writer)
+    try:
+        if latest_sse_data:
+            try:
+                await writer.awrite(latest_sse_data)
+            except Exception:
+                await unregister_sse_client(writer)
+                return
+        # hold the connection open; broadcast_latest will push data
+        while True:
+            await asyncio.sleep(30)
+            async with event_lock:
+                if writer not in event_clients:
+                    break
+    finally:
+        await unregister_sse_client(writer)
+
 
 # ---------- DNS catch-all (all A queries → AP_IP) ----------
 async def dns_catch_all(ip=AP_IP):
@@ -173,18 +278,19 @@ async def handle_client(reader, writer):
         elif method == "GET" and (path == "/" or path.startswith("/index.html")):
             await send_file(writer, "index.html", "text/html; charset=utf-8")
 
+        elif method == "GET" and path == "/events":
+            await serve_sse(writer)
+            return
+
         elif method == "GET" and path == "/angle":
             delta = tracker.get_delta()
             age_ms = tracker.get_last_age_ms()
-            payload = {
-                "delta": None if delta is None else delta,
-                "age_ms": None if age_ms is None else int(age_ms),
-            }
-            body = ujson.dumps(payload)
-            await send_response(writer, 200, "application/json; charset=utf-8", body)
+            update_latest(delta, age_ms)
+            await send_response(writer, 200, "application/json; charset=utf-8", latest_json)
 
         elif path == "/recalibrate" and method in ("POST", "GET"):
             ok = tracker.recalibrate()
+            update_latest(tracker.get_last_delta(), tracker.get_last_age_ms())
             await send_response(writer, 200, "text/plain; charset=utf-8", "OK" if ok else "ERR")
 
         else:
@@ -200,7 +306,10 @@ async def handle_client(reader, writer):
 # ---------- Background sensor refresh ----------
 async def periodic_read():
     while True:
-        tracker.get_delta()
+        delta = tracker.get_delta()
+        age_ms = tracker.get_last_age_ms()
+        update_latest(delta, age_ms)
+        await broadcast_latest()
         await asyncio.sleep_ms(READ_PERIOD_MS)
 
 
