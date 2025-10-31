@@ -89,6 +89,7 @@ class AngleTracker:
         self.g_ref = (0.0, 0.0, 1.0)
         self._last_delta = 0.0
         self._last_good = (0.0, 0.0, 1.0)
+        self._last_read_ms = utime.ticks_ms()
 
     def _set_axis(self, angle_mode: str):
         mode = (angle_mode or "PITCH").upper()
@@ -104,6 +105,7 @@ class AngleTracker:
         g = _safe_read(self.mpu.get_accel_data)
         if g is None:
             return False
+        self._last_read_ms = utime.ticks_ms()
         self.g_ref = _vec_norm(g)
         self._last_good = g
         self._last_delta = 0.0
@@ -113,13 +115,27 @@ class AngleTracker:
         g_now = _safe_read(self.mpu.get_accel_data)
         if g_now is None:
             g_now = self._last_good
-        self._last_good = g_now
+            ts = self._last_read_ms
+        else:
+            ts = utime.ticks_ms()
+            self._last_good = g_now
+            self._last_read_ms = ts
         d = _signed_angle_about_axis(self.g_ref, g_now, self.axis)
         self._last_delta = d
         return d
 
     def get_last_delta(self):
         return self._last_delta
+
+    def get_last_age_ms(self):
+        if self._last_read_ms is None:
+            return None
+        return utime.ticks_diff(utime.ticks_ms(), self._last_read_ms)
+
+    def get_measurement(self):
+        delta = self.get_delta()
+        age_ms = self.get_last_age_ms()
+        return delta, age_ms
 
     def set_angle_mode(self, angle_mode: str):
         self._set_axis(angle_mode)

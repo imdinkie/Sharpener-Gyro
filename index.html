@@ -275,6 +275,13 @@
   const PX_PER_DEG = 90 / 12;
   const CLAMP_PX = 95;
   const CENTER_Y = 100;
+  const LATENCY_LOG_INTERVAL_MS = 3000;
+
+  let lastFetchAgeMs = null;
+  let lastFetchRttMs = null;
+  let lastFetchCompletedAt = 0;
+  let debugLatency = false;
+  let lastLatencyLogMs = 0;
 
   /* HELPERS */
   const fmt = x => (isFinite(x) ? x.toFixed(2) : "--.--");
@@ -284,6 +291,20 @@
   function safeAbort(controller) {
     try { controller.abort(); } catch (_) {}
   }
+
+  window.enableLatencyDebug = () => {
+    debugLatency = true;
+    console.log("[latency] debug enabled");
+  };
+  window.disableLatencyDebug = () => {
+    debugLatency = false;
+    console.log("[latency] debug disabled");
+  };
+  window.getLatencyStats = () => ({
+    ageMs: lastFetchAgeMs,
+    networkRttMs: lastFetchRttMs,
+    lastFetchTimestamp: lastFetchCompletedAt,
+  });
 
   function loadSetting(key, fallback) {
     try {
@@ -339,13 +360,25 @@
     persistSetting(STORAGE_KEYS.silence, silence);
   }
 
-  async function safeFetch(url, options = {}) {
+  async function fetchAngle(options = {}) {
     try {
-      const res = await fetch(url, { ...options, cache: "no-store" });
+      const res = await fetch("/angle", { cache: "no-store", ...options });
       if (res && res.ok) {
-        const txt = (await res.text()).trim();
-        const val = parseFloat(txt);
-        if (isFinite(val)) return val;
+        const data = await res.json();
+        if (data && typeof data === "object" && "delta" in data) {
+          const deltaRaw = data.delta;
+          const ageRaw = data.age_ms;
+          const deltaVal = (typeof deltaRaw === "number")
+            ? deltaRaw
+            : (deltaRaw === null ? null : parseFloat(deltaRaw));
+          const ageVal = (typeof ageRaw === "number")
+            ? ageRaw
+            : (ageRaw === null ? null : parseFloat(ageRaw));
+          return {
+            delta: isFinite(deltaVal) ? deltaVal : null,
+            age_ms: isFinite(ageVal) ? ageVal : null,
+          };
+        }
       }
     } catch (_) {}
     return null;
@@ -366,18 +399,37 @@
     inflight = true;
 
     const controller = new AbortController();
+    const reqStart = performance.now();
     const timeout = setTimeout(() => safeAbort(controller), REQUEST_TIMEOUT_MS);
 
-    const result = await safeFetch("/angle", { signal: controller.signal });
-
-    if (result !== null) {
-      const raw = (((result % 360) + 360) % 360);   
-      reversed = (raw >= 90 && raw <= 270);
-      angleActual = Math.abs(90 - Math.abs(((raw % 180) - 90)));
-    }
+    const result = await fetchAngle({ signal: controller.signal });
+    const reqEnd = performance.now();
 
     clearTimeout(timeout);
     inflight = false;
+
+    if (result) {
+      lastFetchAgeMs = (typeof result.age_ms === "number") ? result.age_ms : null;
+      lastFetchRttMs = reqEnd - reqStart;
+      lastFetchCompletedAt = reqEnd;
+
+      if (debugLatency && (reqEnd - lastLatencyLogMs) >= LATENCY_LOG_INTERVAL_MS) {
+        const age = lastFetchAgeMs ?? 0;
+        const rtt = lastFetchRttMs ?? 0;
+        const approx = age + rtt / 2;
+        const ageTxt = lastFetchAgeMs === null ? "n/a" : `${age.toFixed(1)}`;
+        const rttTxt = `${rtt.toFixed(1)}`;
+        console.log(`[latency] age=${ageTxt}ms rtt=${rttTxt}ms est_total=${approx.toFixed(1)}ms`);
+        lastLatencyLogMs = reqEnd;
+      }
+
+      if (typeof result.delta === "number") {
+        const delta = result.delta;
+        const raw = (((delta % 360) + 360) % 360);
+        reversed = (raw >= 90 && raw <= 270);
+        angleActual = Math.abs(90 - Math.abs(((raw % 180) - 90)));
+      }
+    }
   }
 
   setInterval(pollNow, FETCH_INTERVAL_MS);

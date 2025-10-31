@@ -7,6 +7,7 @@ import network
 import uasyncio as asyncio
 import socket
 import uos
+import ujson
 from machine import I2C, Pin
 
 from reader import AngleTracker
@@ -174,9 +175,14 @@ async def handle_client(reader, writer):
             await send_file(writer, "index.html", "text/html; charset=utf-8")
 
         elif method == "GET" and path == "/angle":
-            d = tracker.get_delta()
-            body = "--.--" if d is None else f"{d:+.2f}"
-            await send_response(writer, 200, "text/plain; charset=utf-8", body)
+            delta = tracker.get_delta()
+            age_ms = tracker.get_last_age_ms()
+            payload = {
+                "delta": None if delta is None else delta,
+                "age_ms": None if age_ms is None else int(age_ms),
+            }
+            body = ujson.dumps(payload)
+            await send_response(writer, 200, "application/json; charset=utf-8", body)
 
         elif path == "/recalibrate" and method in ("POST", "GET"):
             ok = tracker.recalibrate()
