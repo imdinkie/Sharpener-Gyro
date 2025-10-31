@@ -18,8 +18,8 @@ class MPU6050:
             # ±2g accel config
             self.i2c.writeto_mem(self.addr, 0x1C, b'\x00')
             utime.sleep_ms(10)
-            # Enable DLPF (~44 Hz) to reduce vibration noise
-            self.i2c.writeto_mem(self.addr, 0x1A, b'\x06')  # ~5 Hz cutoff (very smooth)
+            # Enable DLPF (~44 Hz) to reduce vibration noise while staying responsive
+            self.i2c.writeto_mem(self.addr, 0x1A, b'\x03')  # ~44 Hz cutoff
             utime.sleep_ms(10)
         except OSError:
             pass
