@@ -9,6 +9,7 @@ import socket
 import uos
 import ujson
 import gc
+import utime
 from machine import I2C, Pin
 
 from reader import AngleTracker
@@ -29,6 +30,9 @@ I2C_SDA_PIN = 21
 I2C_FREQ_HZ = 400_000
 READ_PERIOD_MS = 50       # sensor refresh cadence for background task
 VALID_ANGLE_MODES = ("PITCH", "ROLL", "YAW")
+JITTER_WARN_MULTIPLIER = 2    # log if loop gap exceeds READ_PERIOD_MS * this
+JITTER_LOG_COOLDOWN_MS = 1500 # throttle jitter logs
+SENSOR_WARN_MS = 40           # log if a single sensor read exceeds this
 
 # ---------- Angle tracker ----------
 def _normalize_mode_name(mode):
@@ -187,6 +191,8 @@ async def dns_catch_all(ip=AP_IP):
                 question = data[12:]
                 answer = b"\xC0\x0C" + b"\x00\x01" + b"\x00\x01" + b"\x00\x00\x00\x3C" + b"\x00\x04" + ip_bytes
                 s.sendto(header + question + answer, cli)
+                # Yield so heavy DNS bursts do not starve other tasks.
+                await asyncio.sleep_ms(1)
             except OSError:
                 await asyncio.sleep_ms(2)
     finally:
@@ -341,11 +347,25 @@ async def handle_client(reader, writer):
 
 # ---------- Background sensor refresh ----------
 async def periodic_read():
+    last_loop_ms = utime.ticks_ms()
+    last_warn_ms = last_loop_ms
     while True:
+        start_read = utime.ticks_ms()
         delta = tracker.get_delta()
+        read_elapsed = utime.ticks_diff(utime.ticks_ms(), start_read)
+        if read_elapsed > SENSOR_WARN_MS:
+            print("[sensor] slow read ms=", read_elapsed)
         age_ms = tracker.get_last_age_ms()
         update_latest(delta, age_ms)
         await broadcast_latest()
+        now = utime.ticks_ms()
+        gap_ms = utime.ticks_diff(now, last_loop_ms)
+        last_loop_ms = now
+        if gap_ms > READ_PERIOD_MS * JITTER_WARN_MULTIPLIER:
+            since_warn = utime.ticks_diff(now, last_warn_ms)
+            if since_warn >= JITTER_LOG_COOLDOWN_MS:
+                print("[jitter] periodic_read gap_ms=", gap_ms)
+                last_warn_ms = now
         await asyncio.sleep_ms(READ_PERIOD_MS)
 
 

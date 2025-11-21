@@ -63,6 +63,7 @@ def _safe_read(read_fn, retries=3, delay_ms=5):
             return read_fn()
         except OSError:
             utime.sleep_ms(delay_ms)
+    print("[sensor] read failed after", retries, "retries")
     return None
 
 
