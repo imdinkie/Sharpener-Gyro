@@ -150,6 +150,14 @@
         <input id="showMeanToggle" type="checkbox">
       </div>
       <div class="field">
+        <span class="field-label">Angle & audio smoothing</span>
+        <div class="field-row">
+          <input id="displaySmoothing" type="range" min="0.05" max="0.9" step="0.05" value="0.25">
+          <span class="muted" id="displaySmoothingVal">0.25</span>
+        </div>
+        <span class="muted">Used for the live angle readout and sounds.</span>
+      </div>
+      <div class="field">
         <span class="field-label">Chart smoothing</span>
         <div class="field-row">
           <input id="smoothing" type="range" min="0.05" max="0.9" step="0.05" value="0.3">
@@ -172,7 +180,8 @@
       deadband: "sharpener.deadband",
       critical: "sharpener.critical",
       silence: "sharpener.silence",
-      smoothing: "sharpener.chartSmoothing",
+      chartSmoothing: "sharpener.chartSmoothing",
+      displaySmoothing: "sharpener.displaySmoothing",
     };
     const SHOW_CHART_KEY = "sharpener.showChart";
     const SHOW_MEAN_KEY = "sharpener.showMeanMarkers";
@@ -181,7 +190,8 @@
       deadband: 1,
       critical: 4,
       silence: 10,
-      smoothing: 0.3,
+      chartSmoothing: 0.3,
+      displaySmoothing: 0.25,
     };
     const MODE_CHOICES = ["PITCH", "ROLL", "YAW"];
     const MODE_STORAGE_KEY = "sharpener.angleMode";
@@ -196,6 +206,8 @@
     const showMeanToggle = document.getElementById("showMeanToggle");
     const smoothingIn = document.getElementById("smoothing");
     const smoothingVal = document.getElementById("smoothingVal");
+    const displaySmoothingIn = document.getElementById("displaySmoothing");
+    const displaySmoothingVal = document.getElementById("displaySmoothingVal");
     const modeButtons = Array.from(document.querySelectorAll("[data-mode-option]"));
     const statusEl = document.getElementById("status");
 
@@ -229,8 +241,8 @@
       const minAllowed = (isFinite(currentCritical) ? currentCritical : DEFAULTS.critical) + MIN_SILENCE_MARGIN;
       return Math.max(minAllowed, base);
     };
-    const sanitizeSmoothing = (v) => {
-      const base = isFinite(v) ? v : DEFAULTS.smoothing;
+    const sanitizeSmoothing = (v, fallback = DEFAULTS.chartSmoothing) => {
+      const base = isFinite(v) ? v : fallback;
       return Math.min(0.9, Math.max(0.05, base));
     };
     const loadSetting = (key, fallback) => {
@@ -255,9 +267,13 @@
         return true;
       }
     };
-    const loadSmoothing = () => {
-      const raw = loadSetting(STORAGE_KEYS.smoothing, DEFAULTS.smoothing);
-      return sanitizeSmoothing(raw);
+    const loadChartSmoothing = () => {
+      const raw = loadSetting(STORAGE_KEYS.chartSmoothing, DEFAULTS.chartSmoothing);
+      return sanitizeSmoothing(raw, DEFAULTS.chartSmoothing);
+    };
+    const loadDisplaySmoothing = () => {
+      const raw = loadSetting(STORAGE_KEYS.displaySmoothing, DEFAULTS.displaySmoothing);
+      return sanitizeSmoothing(raw, DEFAULTS.displaySmoothing);
     };
     const loadMeanPreference = () => {
       try {
@@ -274,10 +290,15 @@
     const persistMeanPreference = (show) => {
       try { localStorage.setItem(SHOW_MEAN_KEY, show ? "1" : "0"); } catch (_) {}
     };
-    const persistSmoothing = (val) => {
-      const v = sanitizeSmoothing(val);
-      persistSetting(STORAGE_KEYS.smoothing, v);
+    const persistChartSmoothing = (val) => {
+      const v = sanitizeSmoothing(val, DEFAULTS.chartSmoothing);
+      persistSetting(STORAGE_KEYS.chartSmoothing, v);
       if (smoothingVal) smoothingVal.textContent = v.toFixed(2);
+    };
+    const persistDisplaySmoothing = (val) => {
+      const v = sanitizeSmoothing(val, DEFAULTS.displaySmoothing);
+      persistSetting(STORAGE_KEYS.displaySmoothing, v);
+      if (displaySmoothingVal) displaySmoothingVal.textContent = v.toFixed(2);
     };
 
     function updateModeButtons(mode) {
@@ -345,7 +366,8 @@
       deadband = sanitizeDeadband(loadSetting(STORAGE_KEYS.deadband, DEFAULTS.deadband));
       critical = sanitizeCritical(loadSetting(STORAGE_KEYS.critical, DEFAULTS.critical), deadband);
       silence = sanitizeSilence(loadSetting(STORAGE_KEYS.silence, DEFAULTS.silence), critical);
-      const smooth = loadSmoothing();
+      const chartSmooth = loadChartSmoothing();
+      const displaySmooth = loadDisplaySmoothing();
 
       targetIn.value = target;
       deadbandIn.value = deadband;
@@ -353,9 +375,13 @@
       silenceIn.value = silence;
       showChartToggle.checked = loadChartPreference();
       showMeanToggle.checked = loadMeanPreference();
+      if (displaySmoothingIn) {
+        displaySmoothingIn.value = displaySmooth;
+        displaySmoothingVal.textContent = displaySmooth.toFixed(2);
+      }
       if (smoothingIn) {
-        smoothingIn.value = smooth;
-        smoothingVal.textContent = smooth.toFixed(2);
+        smoothingIn.value = chartSmooth;
+        smoothingVal.textContent = chartSmooth.toFixed(2);
       }
     }
 
@@ -366,8 +392,9 @@
       persistSetting(STORAGE_KEYS.silence, silence);
       persistChartPreference(showChartToggle.checked);
       persistMeanPreference(showMeanToggle.checked);
-      if (smoothingIn) persistSmoothing(parseFloat(smoothingIn.value));
-      statusEl.textContent = "Saved locally. Reload main page to apply.";
+      if (smoothingIn) persistChartSmoothing(parseFloat(smoothingIn.value));
+      if (displaySmoothingIn) persistDisplaySmoothing(parseFloat(displaySmoothingIn.value));
+      statusEl.textContent = "Saved locally. The main page will sync shortly.";
     }
 
     modeButtons.forEach(btn => {
@@ -413,6 +440,10 @@
     document.getElementById("saveBtn").addEventListener("click", persistAll);
     showChartToggle.addEventListener("change", () => persistChartPreference(showChartToggle.checked));
     showMeanToggle.addEventListener("change", () => persistMeanPreference(showMeanToggle.checked));
+    displaySmoothingIn.addEventListener("input", () => {
+      const v = sanitizeSmoothing(parseFloat(displaySmoothingIn.value));
+      displaySmoothingVal.textContent = v.toFixed(2);
+    });
     smoothingIn.addEventListener("input", () => {
       const v = sanitizeSmoothing(parseFloat(smoothingIn.value));
       smoothingVal.textContent = v.toFixed(2);
