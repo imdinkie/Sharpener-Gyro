@@ -99,44 +99,54 @@
 
     .gauge { display: grid; gap: 10px; }
     .gauge-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted); }
+    .gauge-body { display: flex; justify-content: center; align-items: center; gap: 16px; }
     .gauge-track {
       position: relative;
-      height: 80px;
-      border-radius: 14px;
+      height: 220px;
+      width: 78px;
+      border-radius: 16px;
       overflow: hidden;
       border: 1px solid #1f2430;
-      background: linear-gradient(90deg, #1c1f28, #11141c);
+      background: linear-gradient(180deg, #1c1f28, #11141c);
+      box-shadow: inset 0 12px 28px rgba(0,0,0,0.35);
     }
 
     .gauge-line {
       position: absolute;
-      top: 0;
-      bottom: 0;
-      width: 2px;
+      left: 0;
+      right: 0;
+      height: 2px;
       background: rgba(255,255,255,0.7);
-      left: 50%;
-      transform: translateX(-50%);
-      opacity: 0.65;
+      top: 50%;
+      transform: translateY(-50%);
+      opacity: 0.7;
     }
 
     .gauge-marker {
       position: absolute;
-      top: 0;
-      bottom: 0;
-      width: 4px;
-      border-radius: 2px;
+      left: 8px;
+      right: 8px;
+      height: 14px;
+      border-radius: 8px;
       background: var(--accent);
-      box-shadow: 0 0 0 5px rgba(96,165,250,0.18);
-      left: 50%;
-      transform: translateX(-50%);
+      box-shadow: 0 8px 22px rgba(96,165,250,0.25), 0 0 0 5px rgba(96,165,250,0.12);
+      top: 50%;
+      transform: translateY(-50%);
     }
 
     .gauge-labels {
       display: flex;
-      justify-content: space-between;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 10px;
       color: var(--muted);
       font-size: 12px;
+      min-width: 110px;
+      line-height: 1.3;
     }
+    .gauge-labels span:first-child { color: #fca5a5; font-weight: 700; letter-spacing: .02em; }
+    .gauge-labels span:last-child { color: #a3e635; font-weight: 700; letter-spacing: .02em; }
 
     .section {
       background: #0f1116;
@@ -208,14 +218,16 @@
             <span>Deviation from target</span>
             <span id="devtext">0.00°</span>
           </div>
-          <div class="gauge-track" id="angleTrack">
-            <div class="gauge-line"></div>
-            <div class="gauge-marker" id="angleMarker"></div>
-          </div>
-          <div class="gauge-labels">
-            <span>Under</span>
-            <span id="bandLegend">Quiet ≤ <span id="silenceText">0.00</span>°</span>
-            <span>Over</span>
+          <div class="gauge-body">
+            <div class="gauge-track" id="angleTrack">
+              <div class="gauge-line"></div>
+              <div class="gauge-marker" id="angleMarker"></div>
+            </div>
+            <div class="gauge-labels">
+              <span>Over</span>
+              <span id="bandLegend">Quiet ≤ <span id="silenceText">0.00</span>°</span>
+              <span>Under</span>
+            </div>
           </div>
         </div>
       </div>
@@ -516,7 +528,7 @@
       `#7f1d1d ${50 + silencePct}%`,
       `#0c0f18 100%`,
     ];
-    angleTrack.style.background = `linear-gradient(90deg, ${stops.join(', ')})`;
+    angleTrack.style.background = `linear-gradient(180deg, ${stops.join(', ')})`;
     if (silenceTextEl) silenceTextEl.textContent = silence.toFixed(2);
     if (bandLegendEl) bandLegendEl.setAttribute("aria-label", `Quiet zone up to ${silence.toFixed(2)} degrees`);
   }
@@ -1042,8 +1054,8 @@
       offsetText.textContent = "Offset: " + fmt(offsetDeg*2) + "°";
 
       const gaugeMax = Math.max(silence, critical, deadband, 1);
-      const markerPct = 50 + clamp(devDisplay / gaugeMax, -1, 1) * 50;
-      if (angleMarker) angleMarker.style.left = `${markerPct}%`;
+      const markerPct = 50 - clamp(devDisplay / gaugeMax, -1, 1) * 50;
+      if (angleMarker) angleMarker.style.top = `${markerPct}%`;
 
       const outsideDeadband = absDev > deadband;
       const withinSilence = absDev <= silence;
@@ -1072,7 +1084,7 @@
       }
     }
     if (!isFinite(angleActual) && angleMarker) {
-      angleMarker.style.left = "50%";
+      angleMarker.style.top = "50%";
     }
     drawStabilityChart();
     requestAnimationFrame(animate);
