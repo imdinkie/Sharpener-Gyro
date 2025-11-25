@@ -14,13 +14,9 @@
       --warn: #e5e7eb;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
-    html, body {
-      height: 100%;
-    }
+    html, body { height: 100%; }
 
     body {
       margin: 0;
@@ -31,11 +27,7 @@
       place-items: center;
     }
 
-    .wrap {
-      width: 100%;
-      max-width: 440px;
-      padding: 16px;
-    }
+    .wrap { width: 100%; max-width: 520px; padding: 16px; }
 
     .card {
       background: var(--card);
@@ -43,51 +35,33 @@
       box-shadow: 0 8px 30px rgba(0, 0, 0, .35);
       padding: 16px;
       display: grid;
-      gap: 12px;
+      gap: 14px;
       transition: box-shadow 0.2s ease;
     }
 
-    .row { display: flex; gap: 5px; align-items: center; }
+    .row { display: flex; gap: 10px; align-items: center; }
 
-    .big {
-      font-size: 48px;
-      font-weight: 800;
-      letter-spacing: .02em;
-    }
+    .big { font-size: 48px; font-weight: 800; letter-spacing: .02em; }
+    .sub { font-size: 24px; font-weight: 700; }
+    .offset-text { font-size: 14px; color: var(--muted); }
 
-    .sub {
-      font-size: 24px;
+    .field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
+    .field-label { font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+    .field-row { display: flex; align-items: center; gap: 8px; }
+
+    input[type="number"], input[type="range"] {
+      appearance: none;
+      background: #0f1116;
+      border: 1px solid #1f2430;
+      color: var(--fg);
+      border-radius: 12px;
+      padding: 10px 12px;
       font-weight: 700;
     }
 
-    .offset-text {
-      font-size: 14px;
-      color: var(--muted);
-    }
-
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    .field-label {
-      font-weight: 600;
-      letter-spacing: .04em;
-      text-transform: uppercase;
-    }
-
-    .field-row {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    .field input {
-      width: 110px;
-    }
+    input[type="number"] { width: 120px; text-align: right; }
+    input[type="number"]:focus { outline: none; border-color: #334155; box-shadow: 0 0 0 3px rgba(96,165,250,.18); }
+    input[type="range"] { width: 100%; height: 10px; padding: 0; }
 
     button {
       padding: 10px 14px;
@@ -97,28 +71,17 @@
       color: #0b1220;
       font-weight: 800;
       cursor: pointer;
+      box-shadow: 0 10px 24px rgba(0,0,0,.35);
     }
 
     .btn { background: var(--accent); }
     .btn-left  { border-top-right-radius: 0; border-bottom-right-radius: 0; }
     .btn-right { border-top-left-radius: 0;  border-bottom-left-radius: 0;  }
+    button:active { transform: scale(0.98); }
 
-    button:active {
-      transform: scale(0.98);
-    }
-
-    .ok {
-      color: var(--accent);
-    }
-
-    .bad {
-      color: var(--warn);
-    }
-
-    .sub.critical {
-      color: #f87171;
-    }
-
+    .ok { color: var(--accent); }
+    .bad { color: var(--warn); }
+    .sub.critical { color: #f87171; }
     .card.critical {
       box-shadow:
         0 0 0 2px rgba(248, 113, 113, .35),
@@ -126,17 +89,53 @@
     }
 
     .viz {
-      display: grid;
-      place-items: center;
-      height: 220px;
       background: #0f1116;
       border-radius: 12px;
       border: 1px solid #1f2430;
+      padding: 14px;
+      display: grid;
+      gap: 10px;
     }
 
-    svg {
-      width: 240px;
-      height: 200px;
+    .gauge { display: grid; gap: 10px; }
+    .gauge-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted); }
+    .gauge-track {
+      position: relative;
+      height: 80px;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid #1f2430;
+      background: linear-gradient(90deg, #1c1f28, #11141c);
+    }
+
+    .gauge-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: rgba(255,255,255,0.7);
+      left: 50%;
+      transform: translateX(-50%);
+      opacity: 0.65;
+    }
+
+    .gauge-marker {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      border-radius: 2px;
+      background: var(--accent);
+      box-shadow: 0 0 0 5px rgba(96,165,250,0.18);
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .gauge-labels {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 12px;
     }
 
     .section {
@@ -187,6 +186,14 @@
         </div>
       </div>
 
+      <div class="field">
+        <div class="field-label">Target angle</div>
+        <div class="field-row">
+          <input id="target" type="number" step="0.1" min="0.1" max="90" value="20">
+          <span>°</span>
+        </div>
+      </div>
+
       <div class="row" style="justify-content: space-between; align-items: center;">
         <button id="settingsBtn" class="btn" style="background:#1f2937;color:var(--fg);box-shadow:0 10px 24px rgba(0,0,0,.35);" aria-label="Open settings">Settings</button>
         <div class="row">
@@ -196,12 +203,21 @@
       </div>
 
       <div class="viz">
-        <svg viewBox="0 0 240 200" aria-label="Deviation">
-          <line x1="120" y1="20" x2="120" y2="180" stroke="#1f2430" stroke-width="2"/>
-          <circle cx="120" cy="100" r="24" fill="#0b1220" stroke="#334155" stroke-width="2"/>
-          <circle id="dot" cx="120" cy="100" r="10" fill="var(--accent)"/>
-          <text id="devtext" x="120" y="18" text-anchor="middle" font-size="12" fill="#9ca3af">0.00°</text>
-        </svg>
+        <div class="gauge">
+          <div class="gauge-header">
+            <span>Deviation from target</span>
+            <span id="devtext">0.00°</span>
+          </div>
+          <div class="gauge-track" id="angleTrack">
+            <div class="gauge-line"></div>
+            <div class="gauge-marker" id="angleMarker"></div>
+          </div>
+          <div class="gauge-labels">
+            <span>Under</span>
+            <span id="bandLegend">Quiet ≤ <span id="silenceText">0.00</span>°</span>
+            <span>Over</span>
+          </div>
+        </div>
       </div>
 
       <div class="section" data-chart-section>
@@ -221,7 +237,10 @@
   const angleEl = document.getElementById("angle");
   const devEl = document.getElementById("dev");
   const devText = document.getElementById("devtext");
-  const dot = document.getElementById("dot");
+  const angleMarker = document.getElementById("angleMarker");
+  const angleTrack = document.getElementById("angleTrack");
+  const silenceTextEl = document.getElementById("silenceText");
+  const bandLegendEl = document.getElementById("bandLegend");
   const targetIn = document.getElementById("target");
   const btnCal = document.getElementById("cal");
   const btnOffset = document.getElementById("offset");
@@ -242,7 +261,10 @@
     deadband: "sharpener.deadband",
     critical: "sharpener.critical",
     silence: "sharpener.silence",
-    smoothing: "sharpener.chartSmoothing",
+    chartSmoothing: "sharpener.chartSmoothing",
+    displaySmoothing: "sharpener.displaySmoothing",
+    offset: "sharpener.offsetDeg",
+    offsetSide: "sharpener.offsetSide",
   };
   const SHOW_CHART_KEY = "sharpener.showChart";
   const SHOW_MEAN_KEY = "sharpener.showMeanMarkers";
@@ -251,7 +273,8 @@
     deadband: 1,
     critical: 4,
     silence: 10,
-    smoothing: 0.3,
+    chartSmoothing: 0.3,
+    displaySmoothing: 0.25,
   };
   const MODE_STORAGE_KEY = "sharpener.angleMode";
   const MODE_CHOICES = ["PITCH", "ROLL", "YAW"];
@@ -282,9 +305,6 @@
   /* CONSTANTS */
   const FETCH_INTERVAL_MS = 100;
   const REQUEST_TIMEOUT_MS = 800;
-  const PX_PER_DEG = 90 / 12;
-  const CLAMP_PX = 95;
-  const CENTER_Y = 100;
   const LATENCY_LOG_INTERVAL_MS = 3000;
   const SSE_RETRY_DELAY_MS = 5000;
   const HISTORY_WINDOW_MS = 30000;
@@ -301,7 +321,8 @@
   let chartSmoothed = null;
   let chartVisible = true;
   let showMeanMarkers = true;
-  let chartSmoothAlpha = DEFAULTS.smoothing;
+  let chartSmoothAlpha = DEFAULTS.chartSmoothing;
+  let displaySmoothAlpha = DEFAULTS.displaySmoothing;
 
   /* HELPERS */
   const fmt = x => (isFinite(x) ? x.toFixed(2) : "--.--");
@@ -424,21 +445,80 @@
     }
   }
 
-  function loadSmoothing() {
-    const fallback = DEFAULTS.smoothing;
-    const raw = loadSetting(STORAGE_KEYS.smoothing, fallback);
+  function loadChartSmoothing() {
+    const fallback = DEFAULTS.chartSmoothing;
+    const raw = loadSetting(STORAGE_KEYS.chartSmoothing, fallback);
     const val = isFinite(raw) ? raw : fallback;
     return clamp(val, 0.05, 0.9);
   }
 
-  function persistSmoothing(alpha) {
+  function persistChartSmoothing(alpha) {
     const val = clamp(alpha, 0.05, 0.9);
-    persistSetting(STORAGE_KEYS.smoothing, val);
+    persistSetting(STORAGE_KEYS.chartSmoothing, val);
     chartSmoothAlpha = val;
+  }
+
+  function loadDisplaySmoothing() {
+    const fallback = DEFAULTS.displaySmoothing;
+    const raw = loadSetting(STORAGE_KEYS.displaySmoothing, fallback);
+    const val = isFinite(raw) ? raw : fallback;
+    return clamp(val, 0.05, 0.9);
+  }
+
+  function persistDisplaySmoothing(alpha) {
+    const val = clamp(alpha, 0.05, 0.9);
+    persistSetting(STORAGE_KEYS.displaySmoothing, val);
+    displaySmoothAlpha = val;
   }
 
   function persistMeanPreference(show) {
     try { localStorage.setItem(SHOW_MEAN_KEY, show ? "1" : "0"); } catch (_) {}
+  }
+
+  function loadOffsetState() {
+    const raw = loadSetting(STORAGE_KEYS.offset, 0);
+    offsetDeg = isFinite(raw) ? clamp(Math.abs(raw), 0, 90) : 0;
+    try {
+      const storedSide = localStorage.getItem(STORAGE_KEYS.offsetSide);
+      offsetSideWasReversed = storedSide === null ? null : storedSide === "1";
+    } catch (_) {
+      offsetSideWasReversed = null;
+    }
+  }
+
+  function persistOffsetState() {
+    persistSetting(STORAGE_KEYS.offset, offsetDeg);
+    try {
+      if (offsetSideWasReversed === null) {
+        localStorage.removeItem(STORAGE_KEYS.offsetSide);
+      } else {
+        localStorage.setItem(STORAGE_KEYS.offsetSide, offsetSideWasReversed ? "1" : "0");
+      }
+    } catch (_) {}
+  }
+
+  function updateGaugeScale() {
+    if (!angleTrack) return;
+    const maxRange = Math.max(silence, critical, deadband, 1);
+    const toPct = (v) => clamp((v / maxRange) * 50, 0, 50);
+    const deadPct = toPct(deadband);
+    const criticalPct = toPct(critical);
+    const silencePct = toPct(silence);
+    const stops = [
+      `#0c0f18 0%`,
+      `#7f1d1d ${50 - silencePct}%`,
+      `#f87171 ${50 - criticalPct}%`,
+      `#fbbf24 ${50 - deadPct}%`,
+      `#22c55e ${50 - deadPct}%`,
+      `#22c55e ${50 + deadPct}%`,
+      `#fbbf24 ${50 + deadPct}%`,
+      `#f87171 ${50 + criticalPct}%`,
+      `#7f1d1d ${50 + silencePct}%`,
+      `#0c0f18 100%`,
+    ];
+    angleTrack.style.background = `linear-gradient(90deg, ${stops.join(', ')})`;
+    if (silenceTextEl) silenceTextEl.textContent = silence.toFixed(2);
+    if (bandLegendEl) bandLegendEl.setAttribute("aria-label", `Quiet zone up to ${silence.toFixed(2)} degrees`);
   }
 
   function applyChartVisibility(show) {
@@ -475,6 +555,9 @@
     deadband = sanitizeDeadband(loadSetting(STORAGE_KEYS.deadband, DEFAULTS.deadband));
     critical = sanitizeCritical(loadSetting(STORAGE_KEYS.critical, DEFAULTS.critical), deadband);
     silence = sanitizeSilence(loadSetting(STORAGE_KEYS.silence, DEFAULTS.silence), critical);
+    chartSmoothAlpha = loadChartSmoothing();
+    displaySmoothAlpha = loadDisplaySmoothing();
+    loadOffsetState();
 
     if (targetIn) targetIn.value = target;
     if (deadbandIn) deadbandIn.value = deadband;
@@ -485,10 +568,13 @@
     persistSetting(STORAGE_KEYS.deadband, deadband);
     persistSetting(STORAGE_KEYS.critical, critical);
     persistSetting(STORAGE_KEYS.silence, silence);
+    persistChartSmoothing(chartSmoothAlpha);
+    persistDisplaySmoothing(displaySmoothAlpha);
 
     applyChartVisibility(loadChartPreference());
     showMeanMarkers = loadMeanPreference();
-    chartSmoothAlpha = loadSmoothing();
+    updateGaugeScale();
+    if (offsetText) offsetText.textContent = "Offset: " + fmt(offsetDeg*2) + "°";
   }
 
   async function fetchAngle(options = {}) {
@@ -741,8 +827,11 @@
     if (evt.key === SHOW_MEAN_KEY) {
       showMeanMarkers = loadMeanPreference();
     }
-    if (evt.key === STORAGE_KEYS.smoothing) {
-      chartSmoothAlpha = loadSmoothing();
+    if (evt.key === STORAGE_KEYS.chartSmoothing) {
+      chartSmoothAlpha = loadChartSmoothing();
+    }
+    if (evt.key === STORAGE_KEYS.displaySmoothing) {
+      displaySmoothAlpha = loadDisplaySmoothing();
     }
     if (evt.key && Object.values(STORAGE_KEYS).includes(evt.key)) {
       initSettings();
@@ -920,8 +1009,8 @@
     const dt = (now - last) / 1000;
     last = now;
 
-    const k = 8;
-    const alpha = 1 - Math.exp(-k * dt);
+    const smooth = clamp(displaySmoothAlpha, 0.01, 0.99);
+    const alpha = 1 - Math.pow(1 - smooth, dt / (1 / 60));
 
     const accent = reversed ? '#f87171' : '#60a5fa';
     if (getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() !== accent) {
@@ -952,8 +1041,9 @@
 
       offsetText.textContent = "Offset: " + fmt(offsetDeg*2) + "°";
 
-      const dy = clamp(devDisplay * PX_PER_DEG, -CLAMP_PX, CLAMP_PX);
-      dot.setAttribute("cy", String(CENTER_Y - dy));
+      const gaugeMax = Math.max(silence, critical, deadband, 1);
+      const markerPct = 50 + clamp(devDisplay / gaugeMax, -1, 1) * 50;
+      if (angleMarker) angleMarker.style.left = `${markerPct}%`;
 
       const outsideDeadband = absDev > deadband;
       const withinSilence = absDev <= silence;
@@ -980,6 +1070,9 @@
         lastChirpMs = now;
         lastCriticalAlertMs = now;
       }
+    }
+    if (!isFinite(angleActual) && angleMarker) {
+      angleMarker.style.left = "50%";
     }
     drawStabilityChart();
     requestAnimationFrame(animate);
@@ -1047,6 +1140,7 @@
     if (!isFinite(angleActual)) return;
     offsetDeg = angleActual / 2;
     offsetSideWasReversed = reversed;
+    persistOffsetState();
     btnOffset.disabled = true; setTimeout(() => btnOffset.disabled = false, 250);
   });
 
@@ -1055,6 +1149,7 @@
     await safePost("/recalibrate");
     offsetDeg = 0;
     offsetSideWasReversed = null;
+    persistOffsetState();
     setTimeout(() => { btnCal.disabled = false; }, 300);
   });
 </script></body></html>
