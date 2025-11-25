@@ -516,17 +516,24 @@
     const deadPct = toPct(deadband);
     const criticalPct = toPct(critical);
     const silencePct = toPct(silence);
+    const colors = {
+      base: "#0c0f18",
+      quietEdge: "#5f1f1f",
+      critical: "#d95f5f",
+      caution: "#f5d57d",
+      safe: "#5ed0a6",
+    };
     const stops = [
-      `#0c0f18 0%`,
-      `#7f1d1d ${50 - silencePct}%`,
-      `#f87171 ${50 - criticalPct}%`,
-      `#fbbf24 ${50 - deadPct}%`,
-      `#22c55e ${50 - deadPct}%`,
-      `#22c55e ${50 + deadPct}%`,
-      `#fbbf24 ${50 + deadPct}%`,
-      `#f87171 ${50 + criticalPct}%`,
-      `#7f1d1d ${50 + silencePct}%`,
-      `#0c0f18 100%`,
+      `${colors.base} 0%`,
+      `${colors.quietEdge} ${50 - silencePct}%`,
+      `${colors.critical} ${50 - criticalPct}%`,
+      `${colors.caution} ${50 - deadPct}%`,
+      `${colors.safe} ${50 - deadPct}%`,
+      `${colors.safe} ${50 + deadPct}%`,
+      `${colors.caution} ${50 + deadPct}%`,
+      `${colors.critical} ${50 + criticalPct}%`,
+      `${colors.quietEdge} ${50 + silencePct}%`,
+      `${colors.base} 100%`,
     ];
     angleTrack.style.background = `linear-gradient(180deg, ${stops.join(', ')})`;
     if (silenceTextEl) silenceTextEl.textContent = silence.toFixed(2);
