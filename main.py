@@ -33,6 +33,8 @@ VALID_ANGLE_MODES = ("PITCH", "ROLL", "YAW")
 JITTER_WARN_MULTIPLIER = 2    # log if loop gap exceeds READ_PERIOD_MS * this
 JITTER_LOG_COOLDOWN_MS = 1500 # throttle jitter logs
 SENSOR_WARN_MS = 40           # log if a single sensor read exceeds this
+GC_PERIOD_MS = 5000
+GC_MIN_FREE_BYTES = 16000
 
 # ---------- Angle tracker ----------
 def _normalize_mode_name(mode):
@@ -302,7 +304,7 @@ async def handle_client(reader, writer):
             return
 
         elif method == "GET" and path == "/angle":
-            delta = tracker.get_delta()
+            delta = tracker.get_last_delta()
             age_ms = tracker.get_last_age_ms()
             update_latest(delta, age_ms)
             await send_response(writer, 200, "application/json; charset=utf-8", latest_json)
@@ -327,14 +329,14 @@ async def handle_client(reader, writer):
             else:
                 if next_mode != current_angle_mode:
                     tracker.set_angle_mode(next_mode)
-                    tracker.recalibrate()
+                    await tracker.recalibrate_async()
                     current_angle_mode = tracker.angle_mode
                     update_latest(tracker.get_last_delta(), tracker.get_last_age_ms())
                 payload = ujson.dumps({"mode": current_angle_mode})
                 await send_response(writer, 200, "application/json; charset=utf-8", payload)
 
         elif path == "/recalibrate" and method in ("POST", "GET"):
-            ok = tracker.recalibrate()
+            ok = await tracker.recalibrate_async()
             update_latest(tracker.get_last_delta(), tracker.get_last_age_ms())
             await send_response(writer, 200, "text/plain; charset=utf-8", "OK" if ok else "ERR")
 
@@ -374,8 +376,18 @@ async def periodic_read():
 
 async def periodic_gc():
     while True:
-        await asyncio.sleep_ms(2000)
+        await asyncio.sleep_ms(GC_PERIOD_MS)
         try:
+            async with event_lock:
+                has_clients = bool(event_clients)
+            if has_clients:
+                continue
+            if hasattr(gc, "mem_free"):
+                try:
+                    if gc.mem_free() > GC_MIN_FREE_BYTES:
+                        continue
+                except Exception:
+                    pass
             gc.collect()
         except Exception:
             pass

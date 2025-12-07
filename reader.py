@@ -1,6 +1,7 @@
 import math
 import struct
 import utime
+import uasyncio as asyncio
 from machine import I2C, Pin
 
 # ---------- Minimal MPU6050 driver ----------
@@ -80,6 +81,7 @@ class AngleTracker:
       - "ROLL" : about +X axis
       - "YAW"  : about +Z axis
     """
+
     def __init__(
         self,
         i2c: I2C,
@@ -109,16 +111,49 @@ class AngleTracker:
             self.axis = _vec_norm((0.0, 1.0, 0.0))
             self.angle_mode = "PITCH"
 
-    def recalibrate(self) -> bool:
-        utime.sleep_ms(self.calibration_delay_ms)
-        g = _safe_read(self.mpu.get_accel_data)
-        if g is None:
+    def _apply_calibration_from_samples(self, samples) -> bool:
+        if not samples:
             return False
-        self._last_read_ms = utime.ticks_ms()
-        self.g_ref = _vec_norm(g)
-        self._last_good = g
+        sx = sy = sz = 0.0
+        for gx, gy, gz in samples:
+            sx += gx
+            sy += gy
+            sz += gz
+        n = float(len(samples))
+        avg = (sx / n, sy / n, sz / n)
+        self.g_ref = _vec_norm(avg)
+        self._last_good = samples[-1]
         self._last_delta = 0.0
+        self._last_read_ms = utime.ticks_ms()
         return True
+
+    def recalibrate(self, window_ms: int | None = None, step_ms: int = 50) -> bool:
+        if window_ms is None:
+            window_ms = self.calibration_delay_ms
+        if window_ms <= 0:
+            window_ms = 1
+        start = utime.ticks_ms()
+        samples = []
+        while utime.ticks_diff(utime.ticks_ms(), start) < window_ms:
+            g = _safe_read(self.mpu.get_accel_data)
+            if g is not None:
+                samples.append(g)
+            utime.sleep_ms(step_ms)
+        return self._apply_calibration_from_samples(samples)
+
+    async def recalibrate_async(self, window_ms: int | None = None, step_ms: int = 50) -> bool:
+        if window_ms is None:
+            window_ms = self.calibration_delay_ms
+        if window_ms <= 0:
+            window_ms = 1
+        start = utime.ticks_ms()
+        samples = []
+        while utime.ticks_diff(utime.ticks_ms(), start) < window_ms:
+            g = _safe_read(self.mpu.get_accel_data)
+            if g is not None:
+                samples.append(g)
+            await asyncio.sleep_ms(step_ms)
+        return self._apply_calibration_from_samples(samples)
 
     def get_delta(self):
         g_now = _safe_read(self.mpu.get_accel_data)
