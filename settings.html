@@ -149,6 +149,10 @@
         <label for="showMeanToggle">Show over/under marker & text</label>
         <input id="showMeanToggle" type="checkbox">
       </div>
+      <div class="toggle-row">
+        <label for="useSseToggle">Use live streaming (SSE) instead of polling</label>
+        <input id="useSseToggle" type="checkbox">
+      </div>
       <div class="field">
         <span class="field-label">Angle & audio smoothing</span>
         <div class="field-row">
@@ -185,6 +189,7 @@
     };
     const SHOW_CHART_KEY = "sharpener.showChart";
     const SHOW_MEAN_KEY = "sharpener.showMeanMarkers";
+    const USE_SSE_KEY = "sharpener.useSSE";
     const DEFAULTS = {
       target: 20,
       deadband: 1,
@@ -204,6 +209,7 @@
     const silenceIn = document.getElementById("silence");
     const showChartToggle = document.getElementById("showChartToggle");
     const showMeanToggle = document.getElementById("showMeanToggle");
+    const useSseToggle = document.getElementById("useSseToggle");
     const smoothingIn = document.getElementById("smoothing");
     const smoothingVal = document.getElementById("smoothingVal");
     const displaySmoothingIn = document.getElementById("displaySmoothing");
@@ -278,6 +284,15 @@
     const loadMeanPreference = () => {
       try {
         const raw = localStorage.getItem(SHOW_MEAN_KEY);
+        if (raw === null) return true;
+        return raw === "1" || raw === "true";
+      } catch (_) {
+        return true;
+      }
+    };
+    const loadSsePreference = () => {
+      try {
+        const raw = localStorage.getItem(USE_SSE_KEY);
         if (raw === null) return true;
         return raw === "1" || raw === "true";
       } catch (_) {
@@ -368,6 +383,7 @@
       silence = sanitizeSilence(loadSetting(STORAGE_KEYS.silence, DEFAULTS.silence), critical);
       const chartSmooth = loadChartSmoothing();
       const displaySmooth = loadDisplaySmoothing();
+      const useSse = loadSsePreference();
 
       targetIn.value = target;
       deadbandIn.value = deadband;
@@ -375,6 +391,9 @@
       silenceIn.value = silence;
       showChartToggle.checked = loadChartPreference();
       showMeanToggle.checked = loadMeanPreference();
+      if (useSseToggle) {
+        useSseToggle.checked = useSse;
+      }
       if (displaySmoothingIn) {
         displaySmoothingIn.value = displaySmooth;
         displaySmoothingVal.textContent = displaySmooth.toFixed(2);
@@ -392,6 +411,11 @@
       persistSetting(STORAGE_KEYS.silence, silence);
       persistChartPreference(showChartToggle.checked);
       persistMeanPreference(showMeanToggle.checked);
+      if (useSseToggle) {
+        try {
+          localStorage.setItem(USE_SSE_KEY, useSseToggle.checked ? "1" : "0");
+        } catch (_) {}
+      }
       if (smoothingIn) persistChartSmoothing(parseFloat(smoothingIn.value));
       if (displaySmoothingIn) persistDisplaySmoothing(parseFloat(displaySmoothingIn.value));
       statusEl.textContent = "Saved locally. The main page will sync shortly.";

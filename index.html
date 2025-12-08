@@ -280,6 +280,7 @@
   };
   const SHOW_CHART_KEY = "sharpener.showChart";
   const SHOW_MEAN_KEY = "sharpener.showMeanMarkers";
+  const USE_SSE_KEY = "sharpener.useSSE";
   const DEFAULTS = {
     target: 20,
     deadband: 1,
@@ -335,6 +336,7 @@
   let showMeanMarkers = true;
   let chartSmoothAlpha = DEFAULTS.chartSmoothing;
   let displaySmoothAlpha = DEFAULTS.displaySmoothing;
+  let useSse = true;
 
   /* HELPERS */
   const fmt = x => (isFinite(x) ? x.toFixed(2) : "--.--");
@@ -436,6 +438,16 @@
   function loadChartPreference() {
     try {
       const raw = localStorage.getItem(SHOW_CHART_KEY);
+      if (raw === null) return true;
+      return raw === "1" || raw === "true";
+    } catch (_) {
+      return true;
+    }
+  }
+
+  function loadSsePreference() {
+    try {
+      const raw = localStorage.getItem(USE_SSE_KEY);
       if (raw === null) return true;
       return raw === "1" || raw === "true";
     } catch (_) {
@@ -796,6 +808,10 @@
   }
 
   function startEventStream() {
+    if (!useSse) {
+      if (pollTimer === null) startPolling();
+      return;
+    }
     if (!("EventSource" in window)) {
       console.warn("[sse] EventSource not available; using polling");
       if (pollTimer === null) startPolling();
@@ -827,7 +843,7 @@
         stopEventStream();
         startPolling();
         setTimeout(() => {
-          if (!eventSource) startEventStream();
+          if (!eventSource && useSse) startEventStream();
         }, SSE_RETRY_DELAY_MS);
       };
     } catch (err) {
@@ -852,12 +868,26 @@
     if (evt.key === STORAGE_KEYS.displaySmoothing) {
       displaySmoothAlpha = loadDisplaySmoothing();
     }
+    if (evt.key === USE_SSE_KEY) {
+      useSse = loadSsePreference();
+      if (!useSse) {
+        stopEventStream();
+        if (pollTimer === null) startPolling();
+      } else {
+        startEventStream();
+      }
+    }
     if (evt.key && Object.values(STORAGE_KEYS).includes(evt.key)) {
       initSettings();
     }
   });
-  startPolling();
-  startEventStream();
+  useSse = loadSsePreference();
+  if (useSse) {
+    startPolling();
+    startEventStream();
+  } else {
+    startPolling();
+  }
 
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   let lastChirpMs = 0;
