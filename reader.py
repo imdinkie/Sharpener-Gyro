@@ -77,16 +77,20 @@ class AngleTracker:
     """
     Tracks relative angle change of the gravity vector about a fixed axis.
     Modes:
-      - "PITCH": about +Y axis
-      - "ROLL" : about +X axis
-      - "YAW"  : about +Z axis
+      - "AXIS_X": about +X axis
+      - "AXIS_Y": about +Y axis
+      - "AXIS_Z": about +Z axis
+    Legacy aliases still accepted:
+      - "ROLL" -> "AXIS_X"
+      - "PITCH" -> "AXIS_Y"
+      - "YAW" -> "AXIS_Z"
     """
 
     def __init__(
         self,
         i2c: I2C,
         *,
-        angle_mode: str = "PITCH",
+        angle_mode: str = "AXIS_Y",
         mpu_addr: int = 0x68,
         calibration_delay_ms: int = 2000,
     ):
@@ -100,16 +104,23 @@ class AngleTracker:
         self._last_read_ms = utime.ticks_ms()
 
     def _set_axis(self, angle_mode: str):
-        mode = (angle_mode or "PITCH").upper()
+        mode = (angle_mode or "AXIS_Y").upper()
         if mode == "ROLL":
-            self.axis = _vec_norm((1.0, 0.0, 0.0))
-            self.angle_mode = "ROLL"
+            mode = "AXIS_X"
+        elif mode == "PITCH":
+            mode = "AXIS_Y"
         elif mode == "YAW":
+            mode = "AXIS_Z"
+
+        if mode == "AXIS_X":
+            self.axis = _vec_norm((1.0, 0.0, 0.0))
+            self.angle_mode = "AXIS_X"
+        elif mode == "AXIS_Z":
             self.axis = _vec_norm((0.0, 0.0, 1.0))
-            self.angle_mode = "YAW"
+            self.angle_mode = "AXIS_Z"
         else:
             self.axis = _vec_norm((0.0, 1.0, 0.0))
-            self.angle_mode = "PITCH"
+            self.angle_mode = "AXIS_Y"
 
     def _apply_calibration_from_samples(self, samples) -> bool:
         if not samples:
@@ -188,7 +199,7 @@ class AngleTracker:
 # ---------- Convenience creator ----------
 def create_default_tracker(
     *,
-    angle_mode="PITCH",
+    angle_mode="AXIS_Y",
     i2c_id=0,
     scl_pin=22,
     sda_pin=21,

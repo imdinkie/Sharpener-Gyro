@@ -290,7 +290,12 @@
     displaySmoothing: 0.25,
   };
   const MODE_STORAGE_KEY = "sharpener.angleMode";
-  const MODE_CHOICES = ["PITCH", "ROLL", "YAW"];
+  const MODE_CHOICES = ["AXIS_X", "AXIS_Y", "AXIS_Z"];
+  const LEGACY_MODE_ALIASES = {
+    ROLL: "AXIS_X",
+    PITCH: "AXIS_Y",
+    YAW: "AXIS_Z",
+  };
   const MIN_CRITICAL_MARGIN = 0.1;
   const MIN_SILENCE_MARGIN = 0.5;
 
@@ -645,6 +650,7 @@
   const sanitizeModeName = (value) => {
     if (typeof value !== "string") return null;
     const upper = value.trim().toUpperCase();
+    if (upper in LEGACY_MODE_ALIASES) return LEGACY_MODE_ALIASES[upper];
     return MODE_CHOICES.includes(upper) ? upper : null;
   };
 

@@ -23,13 +23,18 @@ NETMASK = "255.255.255.0"
 GATEWAY = "192.168.4.1"
 DNS_IP = "8.8.8.8"
 
-ANGLE_MODE = "PITCH"     # "PITCH", "ROLL", or "YAW"
+ANGLE_MODE = "AXIS_Y"    # "AXIS_X", "AXIS_Y", or "AXIS_Z"
 I2C_ID = 0
 I2C_SCL_PIN = 22
 I2C_SDA_PIN = 21
 I2C_FREQ_HZ = 400_000
 READ_PERIOD_MS = 50       # sensor refresh cadence for background task
-VALID_ANGLE_MODES = ("PITCH", "ROLL", "YAW")
+VALID_ANGLE_MODES = ("AXIS_X", "AXIS_Y", "AXIS_Z")
+LEGACY_ANGLE_MODE_ALIASES = {
+    "ROLL": "AXIS_X",
+    "PITCH": "AXIS_Y",
+    "YAW": "AXIS_Z",
+}
 JITTER_WARN_MULTIPLIER = 2    # log if loop gap exceeds READ_PERIOD_MS * this
 JITTER_LOG_COOLDOWN_MS = 1500 # throttle jitter logs
 SENSOR_WARN_MS = 40           # log if a single sensor read exceeds this
@@ -46,10 +51,12 @@ def _normalize_mode_name(mode):
         except Exception:
             return None
     mode_upper = mode.strip().upper()
-    return mode_upper if mode_upper in VALID_ANGLE_MODES else None
+    if mode_upper in VALID_ANGLE_MODES:
+        return mode_upper
+    return LEGACY_ANGLE_MODE_ALIASES.get(mode_upper)
 
 
-default_mode = _normalize_mode_name(ANGLE_MODE) or "PITCH"
+default_mode = _normalize_mode_name(ANGLE_MODE) or "AXIS_Y"
 i2c = I2C(I2C_ID, scl=Pin(I2C_SCL_PIN), sda=Pin(I2C_SDA_PIN), freq=I2C_FREQ_HZ)
 tracker = AngleTracker(i2c, angle_mode=default_mode, calibration_delay_ms=1500)
 current_angle_mode = tracker.angle_mode
