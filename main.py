@@ -10,6 +10,8 @@ import uos
 import ujson
 import gc
 import utime
+import sys
+import uselect
 from machine import I2C, Pin
 
 from reader import AngleTracker
@@ -44,6 +46,9 @@ GC_MIN_FREE_BYTES = 16000
 I2C_SCAN_RETRIES = 3
 I2C_SCAN_RETRY_DELAY_MS = 50
 MPU_CANDIDATE_ADDRS = (0x68, 0x69)
+SERIAL_STREAM_PERIOD_MS = 40
+SERIAL_STREAM_DEFAULT = False
+SERIAL_RX_POLL_MS = 20
 
 # ---------- Angle tracker ----------
 def _normalize_mode_name(mode):
@@ -113,6 +118,134 @@ runtime_stats = {
     "last_sensor_read_ms": None,
     "sse_push_count": 0,
 }
+serial_state = {
+    "available": False,
+    "stream_enabled": SERIAL_STREAM_DEFAULT,
+    "tx_count": 0,
+    "rx_count": 0,
+    "rx_parse_errors": 0,
+    "last_cmd": None,
+    "last_error": None,
+}
+serial_lock = asyncio.Lock()
+serial_poller = None
+
+
+def _serial_stdout_write(line):
+    try:
+        sys.stdout.write(line)
+        if hasattr(sys.stdout, "flush"):
+            try:
+                sys.stdout.flush()
+            except Exception:
+                pass
+        return True
+    except Exception as exc:
+        serial_state["last_error"] = "tx:{}".format(exc)
+        return False
+
+
+async def serial_emit(obj):
+    line = None
+    try:
+        line = ujson.dumps(obj) + "\n"
+    except Exception as exc:
+        serial_state["last_error"] = "encode:{}".format(exc)
+        return False
+    async with serial_lock:
+        ok = _serial_stdout_write(line)
+    if ok:
+        serial_state["tx_count"] += 1
+    return ok
+
+
+def _build_status_payload():
+    tracker_status = tracker.get_status()
+    return {
+        "type": "status",
+        "mode": current_angle_mode,
+        "latest": latest_payload,
+        "sensor": {
+            "mpu_addr": tracker_status.get("mpu_addr"),
+            "read_ok_count": tracker_status.get("read_ok_count"),
+            "read_fail_count": tracker_status.get("read_fail_count"),
+            "last_read_ok": tracker_status.get("last_read_ok"),
+            "last_read_elapsed_ms": tracker_status.get("last_read_elapsed_ms"),
+            "last_age_ms": tracker_status.get("last_age_ms"),
+        },
+        "i2c": {
+            "freq_hz": I2C_FREQ_HZ,
+            "scan_seen": i2c_scan_seen,
+            "detected_addr": detected_mpu_addr,
+        },
+        "runtime": runtime_stats,
+        "serial": serial_state,
+        "timing": {
+            "read_period_ms": READ_PERIOD_MS,
+            "sse_broadcast_period_ms": SSE_BROADCAST_PERIOD_MS,
+            "serial_stream_period_ms": SERIAL_STREAM_PERIOD_MS,
+        },
+    }
+
+
+async def _apply_mode_change(next_mode):
+    global current_angle_mode
+    if next_mode != current_angle_mode:
+        tracker.set_angle_mode(next_mode)
+        await tracker.recalibrate_async()
+        current_angle_mode = tracker.angle_mode
+        update_latest(tracker.get_last_delta(), tracker.get_last_age_ms())
+    return current_angle_mode
+
+
+async def _run_recalibration():
+    ok = await tracker.recalibrate_async()
+    update_latest(tracker.get_last_delta(), tracker.get_last_age_ms())
+    return ok
+
+
+def _serial_telemetry_payload():
+    return {
+        "type": "telemetry",
+        "t_ms": latest_measurement_ms,
+        "delta": latest_payload.get("delta"),
+        "age_ms": latest_payload.get("age_ms"),
+        "mode": current_angle_mode,
+        "ok": tracker.get_status().get("last_read_ok"),
+    }
+
+
+def _parse_serial_line(raw):
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        try:
+            raw = raw.decode("utf-8")
+        except Exception:
+            return None
+    line = raw.strip()
+    if not line:
+        return None
+    try:
+        data = ujson.loads(line)
+    except Exception:
+        serial_state["rx_parse_errors"] += 1
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _init_serial_poll():
+    global serial_poller
+    try:
+        poller = uselect.poll()
+        poller.register(sys.stdin, uselect.POLLIN)
+        serial_poller = poller
+        serial_state["available"] = True
+        return True
+    except Exception as exc:
+        serial_state["available"] = False
+        serial_state["last_error"] = "poll_init:{}".format(exc)
+        return False
 
 
 def _round_delta(delta):
@@ -355,29 +488,8 @@ async def handle_client(reader, writer):
             await send_response(writer, 200, "application/json; charset=utf-8", payload)
 
         elif path == "/status" and method == "GET":
-            tracker_status = tracker.get_status()
-            payload = {
-                "mode": current_angle_mode,
-                "latest": latest_payload,
-                "sensor": {
-                    "mpu_addr": tracker_status.get("mpu_addr"),
-                    "read_ok_count": tracker_status.get("read_ok_count"),
-                    "read_fail_count": tracker_status.get("read_fail_count"),
-                    "last_read_ok": tracker_status.get("last_read_ok"),
-                    "last_read_elapsed_ms": tracker_status.get("last_read_elapsed_ms"),
-                    "last_age_ms": tracker_status.get("last_age_ms"),
-                },
-                "i2c": {
-                    "freq_hz": I2C_FREQ_HZ,
-                    "scan_seen": i2c_scan_seen,
-                    "detected_addr": detected_mpu_addr,
-                },
-                "runtime": runtime_stats,
-                "timing": {
-                    "read_period_ms": READ_PERIOD_MS,
-                    "sse_broadcast_period_ms": SSE_BROADCAST_PERIOD_MS,
-                },
-            }
+            payload = _build_status_payload()
+            payload.pop("type", None)
             await send_response(writer, 200, "application/json; charset=utf-8", ujson.dumps(payload))
 
         elif path == "/angle-mode" and method == "POST":
@@ -394,17 +506,12 @@ async def handle_client(reader, writer):
             if not next_mode:
                 await send_response(writer, 400, "application/json; charset=utf-8", ujson.dumps({"error": "invalid mode"}))
             else:
-                if next_mode != current_angle_mode:
-                    tracker.set_angle_mode(next_mode)
-                    await tracker.recalibrate_async()
-                    current_angle_mode = tracker.angle_mode
-                    update_latest(tracker.get_last_delta(), tracker.get_last_age_ms())
+                await _apply_mode_change(next_mode)
                 payload = ujson.dumps({"mode": current_angle_mode})
                 await send_response(writer, 200, "application/json; charset=utf-8", payload)
 
         elif path == "/recalibrate" and method in ("POST", "GET"):
-            ok = await tracker.recalibrate_async()
-            update_latest(tracker.get_last_delta(), tracker.get_last_age_ms())
+            ok = await _run_recalibration()
             await send_response(writer, 200, "text/plain; charset=utf-8", "OK" if ok else "ERR")
 
         else:
@@ -454,6 +561,74 @@ async def periodic_sse_broadcast():
             pass
 
 
+async def periodic_serial_stream():
+    while True:
+        await asyncio.sleep_ms(SERIAL_STREAM_PERIOD_MS)
+        if not serial_state["available"] or not serial_state["stream_enabled"]:
+            continue
+        try:
+            await serial_emit(_serial_telemetry_payload())
+        except Exception:
+            pass
+
+
+async def serial_command_loop():
+    if not _init_serial_poll():
+        print("[serial] command poll unavailable")
+        return
+
+    while True:
+        await asyncio.sleep_ms(SERIAL_RX_POLL_MS)
+        try:
+            events = serial_poller.poll(0)
+        except Exception as exc:
+            serial_state["last_error"] = "poll:{}".format(exc)
+            continue
+        if not events:
+            continue
+        try:
+            raw = sys.stdin.readline()
+        except Exception as exc:
+            serial_state["last_error"] = "read:{}".format(exc)
+            continue
+        cmd = _parse_serial_line(raw)
+        if not cmd:
+            continue
+        serial_state["rx_count"] += 1
+        cmd_name = str(cmd.get("cmd", "")).strip().lower()
+        serial_state["last_cmd"] = cmd_name or None
+
+        if cmd_name == "ping":
+            await serial_emit({"type": "response", "cmd": "ping", "ok": True})
+            continue
+
+        if cmd_name == "status":
+            await serial_emit(_build_status_payload())
+            continue
+
+        if cmd_name == "stream":
+            enabled = bool(cmd.get("enabled", True))
+            serial_state["stream_enabled"] = enabled
+            await serial_emit({"type": "response", "cmd": "stream", "ok": True, "enabled": enabled})
+            continue
+
+        if cmd_name == "recalibrate":
+            ok = await _run_recalibration()
+            await serial_emit({"type": "response", "cmd": "recalibrate", "ok": bool(ok)})
+            continue
+
+        if cmd_name == "set_mode":
+            next_mode = _normalize_mode_name(cmd.get("mode"))
+            if not next_mode:
+                await serial_emit({"type": "error", "cmd": "set_mode", "ok": False, "error": "invalid mode"})
+                continue
+            mode = await _apply_mode_change(next_mode)
+            await serial_emit({"type": "response", "cmd": "set_mode", "ok": True, "mode": mode})
+            continue
+
+        await serial_emit({"type": "error", "cmd": cmd_name or None, "ok": False, "error": "unknown command"})
+
+
 async def periodic_gc():
     while True:
         await asyncio.sleep_ms(GC_PERIOD_MS)
@@ -477,6 +652,8 @@ async def periodic_gc():
 async def main():
     asyncio.create_task(periodic_read())
     asyncio.create_task(periodic_sse_broadcast())
+    asyncio.create_task(periodic_serial_stream())
+    asyncio.create_task(serial_command_loop())
     asyncio.create_task(dns_catch_all(AP_IP))
     asyncio.create_task(periodic_gc())
     srv = await asyncio.start_server(handle_client, "0.0.0.0", 80)
