@@ -28,7 +28,8 @@ I2C_ID = 0
 I2C_SCL_PIN = 22
 I2C_SDA_PIN = 21
 I2C_FREQ_HZ = 400_000
-READ_PERIOD_MS = 50       # sensor refresh cadence for background task
+READ_PERIOD_MS = 40       # sensor refresh cadence for background task (balanced profile)
+SSE_BROADCAST_PERIOD_MS = 40
 VALID_ANGLE_MODES = ("AXIS_X", "AXIS_Y", "AXIS_Z")
 LEGACY_ANGLE_MODE_ALIASES = {
     "ROLL": "AXIS_X",
@@ -40,6 +41,9 @@ JITTER_LOG_COOLDOWN_MS = 1500 # throttle jitter logs
 SENSOR_WARN_MS = 40           # log if a single sensor read exceeds this
 GC_PERIOD_MS = 5000
 GC_MIN_FREE_BYTES = 16000
+I2C_SCAN_RETRIES = 3
+I2C_SCAN_RETRY_DELAY_MS = 50
+MPU_CANDIDATE_ADDRS = (0x68, 0x69)
 
 # ---------- Angle tracker ----------
 def _normalize_mode_name(mode):
@@ -56,9 +60,29 @@ def _normalize_mode_name(mode):
     return LEGACY_ANGLE_MODE_ALIASES.get(mode_upper)
 
 
+def _detect_mpu_addr(i2c_obj, candidates=MPU_CANDIDATE_ADDRS):
+    for attempt in range(I2C_SCAN_RETRIES):
+        try:
+            found = i2c_obj.scan()
+        except Exception:
+            found = []
+        for addr in candidates:
+            if addr in found:
+                return addr, found
+        if attempt + 1 < I2C_SCAN_RETRIES:
+            utime.sleep_ms(I2C_SCAN_RETRY_DELAY_MS)
+    return None, found if "found" in locals() else []
+
+
 default_mode = _normalize_mode_name(ANGLE_MODE) or "AXIS_Y"
 i2c = I2C(I2C_ID, scl=Pin(I2C_SCL_PIN), sda=Pin(I2C_SDA_PIN), freq=I2C_FREQ_HZ)
-tracker = AngleTracker(i2c, angle_mode=default_mode, calibration_delay_ms=1500)
+detected_mpu_addr, i2c_scan_seen = _detect_mpu_addr(i2c)
+if detected_mpu_addr is None:
+    detected_mpu_addr = MPU_CANDIDATE_ADDRS[0]
+    print("[i2c] MPU not found, defaulting to 0x{:02x}; scan={}".format(detected_mpu_addr, i2c_scan_seen))
+else:
+    print("[i2c] MPU detected at 0x{:02x}; scan={}".format(detected_mpu_addr, i2c_scan_seen))
+tracker = AngleTracker(i2c, angle_mode=default_mode, mpu_addr=detected_mpu_addr, calibration_delay_ms=1500)
 current_angle_mode = tracker.angle_mode
 
 print("Calibrating... keep sensor still.")
@@ -79,8 +103,16 @@ event_clients = set()
 event_lock = asyncio.Lock()
 latest_delta = None
 latest_age_ms = None
+latest_measurement_ms = None
 latest_json = ujson.dumps({"delta": None, "age_ms": None})
 latest_sse_data = "data: {}\n\n".format(latest_json)
+latest_payload = {"delta": None, "age_ms": None}
+runtime_stats = {
+    "periodic_read_gap_ms": None,
+    "periodic_read_max_gap_ms": 0,
+    "last_sensor_read_ms": None,
+    "sse_push_count": 0,
+}
 
 
 def _round_delta(delta):
@@ -93,13 +125,15 @@ def _round_delta(delta):
 
 
 def update_latest(delta, age_ms):
-    global latest_delta, latest_age_ms, latest_json, latest_sse_data
+    global latest_delta, latest_age_ms, latest_measurement_ms, latest_json, latest_sse_data, latest_payload
     latest_delta = delta
     latest_age_ms = None if age_ms is None else int(age_ms)
+    latest_measurement_ms = utime.ticks_ms()
     payload = {
         "delta": None if delta is None else _round_delta(delta),
         "age_ms": latest_age_ms,
     }
+    latest_payload = payload
     latest_json = ujson.dumps(payload)
     latest_sse_data = "data: {}\n\n".format(latest_json)
     return payload
@@ -320,6 +354,32 @@ async def handle_client(reader, writer):
             payload = ujson.dumps({"mode": current_angle_mode})
             await send_response(writer, 200, "application/json; charset=utf-8", payload)
 
+        elif path == "/status" and method == "GET":
+            tracker_status = tracker.get_status()
+            payload = {
+                "mode": current_angle_mode,
+                "latest": latest_payload,
+                "sensor": {
+                    "mpu_addr": tracker_status.get("mpu_addr"),
+                    "read_ok_count": tracker_status.get("read_ok_count"),
+                    "read_fail_count": tracker_status.get("read_fail_count"),
+                    "last_read_ok": tracker_status.get("last_read_ok"),
+                    "last_read_elapsed_ms": tracker_status.get("last_read_elapsed_ms"),
+                    "last_age_ms": tracker_status.get("last_age_ms"),
+                },
+                "i2c": {
+                    "freq_hz": I2C_FREQ_HZ,
+                    "scan_seen": i2c_scan_seen,
+                    "detected_addr": detected_mpu_addr,
+                },
+                "runtime": runtime_stats,
+                "timing": {
+                    "read_period_ms": READ_PERIOD_MS,
+                    "sse_broadcast_period_ms": SSE_BROADCAST_PERIOD_MS,
+                },
+            }
+            await send_response(writer, 200, "application/json; charset=utf-8", ujson.dumps(payload))
+
         elif path == "/angle-mode" and method == "POST":
             next_mode = None
             if body:
@@ -365,20 +425,33 @@ async def periodic_read():
         start_read = utime.ticks_ms()
         delta = tracker.get_delta()
         read_elapsed = utime.ticks_diff(utime.ticks_ms(), start_read)
+        runtime_stats["last_sensor_read_ms"] = read_elapsed
         if read_elapsed > SENSOR_WARN_MS:
             print("[sensor] slow read ms=", read_elapsed)
         age_ms = tracker.get_last_age_ms()
         update_latest(delta, age_ms)
-        await broadcast_latest()
         now = utime.ticks_ms()
         gap_ms = utime.ticks_diff(now, last_loop_ms)
         last_loop_ms = now
+        runtime_stats["periodic_read_gap_ms"] = gap_ms
+        if gap_ms > runtime_stats["periodic_read_max_gap_ms"]:
+            runtime_stats["periodic_read_max_gap_ms"] = gap_ms
         if gap_ms > READ_PERIOD_MS * JITTER_WARN_MULTIPLIER:
             since_warn = utime.ticks_diff(now, last_warn_ms)
             if since_warn >= JITTER_LOG_COOLDOWN_MS:
                 print("[jitter] periodic_read gap_ms=", gap_ms)
                 last_warn_ms = now
         await asyncio.sleep_ms(READ_PERIOD_MS)
+
+
+async def periodic_sse_broadcast():
+    while True:
+        await asyncio.sleep_ms(SSE_BROADCAST_PERIOD_MS)
+        try:
+            await broadcast_latest()
+            runtime_stats["sse_push_count"] += 1
+        except Exception:
+            pass
 
 
 async def periodic_gc():
@@ -403,6 +476,7 @@ async def periodic_gc():
 # ---------- Main entry ----------
 async def main():
     asyncio.create_task(periodic_read())
+    asyncio.create_task(periodic_sse_broadcast())
     asyncio.create_task(dns_catch_all(AP_IP))
     asyncio.create_task(periodic_gc())
     srv = await asyncio.start_server(handle_client, "0.0.0.0", 80)

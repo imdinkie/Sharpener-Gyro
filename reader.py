@@ -102,6 +102,10 @@ class AngleTracker:
         self._last_delta = 0.0
         self._last_good = (0.0, 0.0, 1.0)
         self._last_read_ms = utime.ticks_ms()
+        self._read_ok_count = 0
+        self._read_fail_count = 0
+        self._last_read_ok = True
+        self._last_read_elapsed_ms = 0
 
     def _set_axis(self, angle_mode: str):
         mode = (angle_mode or "AXIS_Y").upper()
@@ -138,6 +142,18 @@ class AngleTracker:
         self._last_read_ms = utime.ticks_ms()
         return True
 
+    def _read_accel_sample(self):
+        start_ms = utime.ticks_ms()
+        g = _safe_read(self.mpu.get_accel_data)
+        self._last_read_elapsed_ms = utime.ticks_diff(utime.ticks_ms(), start_ms)
+        if g is None:
+            self._read_fail_count += 1
+            self._last_read_ok = False
+            return None
+        self._read_ok_count += 1
+        self._last_read_ok = True
+        return g
+
     def recalibrate(self, window_ms: int | None = None, step_ms: int = 50) -> bool:
         if window_ms is None:
             window_ms = self.calibration_delay_ms
@@ -146,7 +162,7 @@ class AngleTracker:
         start = utime.ticks_ms()
         samples = []
         while utime.ticks_diff(utime.ticks_ms(), start) < window_ms:
-            g = _safe_read(self.mpu.get_accel_data)
+            g = self._read_accel_sample()
             if g is not None:
                 samples.append(g)
             utime.sleep_ms(step_ms)
@@ -160,14 +176,14 @@ class AngleTracker:
         start = utime.ticks_ms()
         samples = []
         while utime.ticks_diff(utime.ticks_ms(), start) < window_ms:
-            g = _safe_read(self.mpu.get_accel_data)
+            g = self._read_accel_sample()
             if g is not None:
                 samples.append(g)
             await asyncio.sleep_ms(step_ms)
         return self._apply_calibration_from_samples(samples)
 
     def get_delta(self):
-        g_now = _safe_read(self.mpu.get_accel_data)
+        g_now = self._read_accel_sample()
         if g_now is None:
             g_now = self._last_good
             ts = self._last_read_ms
@@ -194,6 +210,17 @@ class AngleTracker:
 
     def set_angle_mode(self, angle_mode: str):
         self._set_axis(angle_mode)
+
+    def get_status(self):
+        return {
+            "mpu_addr": self.mpu.addr,
+            "read_ok_count": self._read_ok_count,
+            "read_fail_count": self._read_fail_count,
+            "last_read_ok": self._last_read_ok,
+            "last_read_elapsed_ms": self._last_read_elapsed_ms,
+            "last_age_ms": self.get_last_age_ms(),
+            "angle_mode": self.angle_mode,
+        }
 
 
 # ---------- Convenience creator ----------
